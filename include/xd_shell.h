@@ -16,4 +16,27 @@
 #ifndef XD_SHELL_H
 #define XD_SHELL_H
 
+// ========================
+// Macros
+// ========================
+
+/**
+ * @brief The maximum length of the shell's input prompt.
+ */
+#define XD_SH_PROMPT_MAX_LENGTH (5000)
+
+// ========================
+// Variables
+// ========================
+
+/**
+ * @brief Indicates whether the shell is interactive (non-zero) or not (zero).
+ */
+extern int xd_sh_is_interactive;
+
+/**
+ * @brief The shell's input prompt string.
+ */
+extern char xd_sh_prompt[];
+
 #endif  // XD_SHELL_H

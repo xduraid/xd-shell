@@ -15,6 +15,9 @@
 
 #include "xd_shell.h"
 
+#include <string.h>
+#include <unistd.h>
+
 // ========================
 // Function Declarations
 // ========================
@@ -36,6 +39,9 @@ extern int yyparse();
 // Public Variables
 // ========================
 
+int xd_sh_is_interactive = 0;
+char xd_sh_prompt[XD_SH_PROMPT_MAX_LENGTH] = {0};
+
 // ========================
 // Function Definitions
 // ========================
@@ -44,6 +50,10 @@ extern int yyparse();
  * @brief Constructor, runs before main to initialize the shell.
  */
 static void xd_sh_init() {
+  xd_sh_is_interactive = (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO));
+  if (xd_sh_is_interactive) {
+    strncpy(xd_sh_prompt, "\e[0;94mxd-shell\e[0m$ ", XD_SH_PROMPT_MAX_LENGTH);
+  }
 }  // xd_sh_init()
 
 /**
