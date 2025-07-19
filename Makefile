@@ -58,7 +58,7 @@ TARGET = $(BIN_DIR)/xd_shell
 
 .SUFFIXES:
 .SECONDARY:
-.PHONY: all release debug valgrind clean deep_clean help
+.PHONY: all release debug valgrind run_tests clean deep_clean help
 
 all: debug
 
@@ -95,6 +95,9 @@ debug: deep_clean $(TARGET)
 valgrind: deep_clean debug
 	$(VALGRIND) $(VALGRIND_FLAGS) ./$(TARGET)
 
+run_tests:
+	$(MAKE) -C ./tests
+
 clean:
 	rm -rf $(BUILD_DIR)
 
@@ -107,6 +110,7 @@ help:
 	@echo "  release     - Build with release flags"
 	@echo "  debug       - Build with debug flags"
 	@echo "  valgrind    - Build in debug and run with valgrind"
+	@echo "  run_tests   - Run all tests"
 	@echo "  clean       - Remove intermediate build artifacts"
 	@echo "  deep_clean  - Remove all generated files"
 	@echo "  help        - Show this message"
