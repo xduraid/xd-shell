@@ -30,6 +30,7 @@ static int xd_sh_run();
 
 extern int yylex_destroy();
 extern int yyparse();
+extern void yyparse_cleanup();
 
 // ========================
 // Variables
@@ -61,6 +62,7 @@ static void xd_sh_init() {
  */
 static void xd_sh_destroy() {
   yylex_destroy();
+  yyparse_cleanup();
 }  // xd_sh_destroy()
 
 /**

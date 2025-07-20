@@ -115,7 +115,43 @@ static int xd_getc() {
 
 %%
 
-"foo" {
+"<" {
+  return LT;
+}
+
+">" {
+  return GT;
+}
+
+">>" {
+  return GT_GT;
+}
+
+"2>" {
+  return TWO_GT;
+}
+
+"2>>" {
+  return TWO_GT_GT;
+}
+
+">&" {
+  return GT_AMPERSAND;
+}
+
+">>&" {
+  return GT_GT_AMPERSAND;
+}
+
+"|" {
+  return PIPE;
+}
+
+"&" {
+  return AMPERSAND;
+}
+
+[^ \t\n<>|&]+ {
   yylval.string = strdup(yytext);
   if (yylval.string == NULL) {
     fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
@@ -131,10 +167,6 @@ static int xd_getc() {
 
 \n {
   return NEWLINE;
-}
-
-.+ {
-  puts("UNKNOWN TOKEN");
 }
 
 <<EOF>> {

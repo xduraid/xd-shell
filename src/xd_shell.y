@@ -15,7 +15,12 @@
 
 %{
 
+#include <errno.h>
 #include <stdio.h>
+#include <string.h>
+
+#include "xd_command.h"
+#include "xd_job.h"
 
 // ========================
 // Macros
@@ -25,6 +30,7 @@
 // Function Declarations
 // ========================
 
+void yyparse_cleanup();
 void yyerror(const char *s);
 extern int yylex();
 
@@ -32,9 +38,32 @@ extern int yylex();
 // Variables
 // ========================
 
+/**
+ * @brief Current token text.
+ */
+extern char *yytext;
+
+/**
+ * @brief Current command being parsed.
+ */
+static xd_command_t *xd_current_command = NULL;
+
+/**
+ * @brief Current job being parsed.
+ */
+static xd_job_t *xd_current_job = NULL;
+
 // ========================
 // Public Variables
 // ========================
+
+/**
+ * @brief Frees up the memory allocated during parsing.
+ */
+void yyparse_cleanup() {
+  xd_job_destroy(xd_current_job);
+  xd_command_destroy(xd_current_command);
+}  // yyparse_cleanup()
 
 // ========================
 // Function Definitions
@@ -45,7 +74,17 @@ extern int yylex();
  */
 void yyerror(const char *s) {
   (void)s;
-  fprintf(stderr, "xd-shell: syntax error\n");
+  if (yytext == NULL) {
+    fprintf(stderr, "xd-shell: syntax error\n");
+    return;
+  }
+  if (strcmp(yytext, "\n") == 0) {
+    fprintf(stderr, "xd-shell: syntax error near unexpected token 'newline'\n");
+  }
+  else {
+    fprintf(stderr, "xd-shell: syntax error near unexpected token '%s'\n",
+            yytext);
+  }
 }  // yyerror()
 
 // ========================
@@ -60,6 +99,10 @@ void yyerror(const char *s) {
 
 %define parse.error detailed
 
+%initial-action {
+  xd_current_job = xd_job_create();
+}
+
 /* ============================== */
 /* Types and Tokens               */
 /* ============================== */
@@ -70,7 +113,8 @@ void yyerror(const char *s) {
 }
 
 %token <string> ARG
-%token NEWLINE
+%token PIPE AMPERSAND NEWLINE
+%token LT GT GT_GT TWO_GT TWO_GT_GT GT_AMPERSAND GT_GT_AMPERSAND
 
 %destructor { free($$); } <string>
 
@@ -81,11 +125,145 @@ void yyerror(const char *s) {
 %%
 
 command_line:
-    command_line ARG NEWLINE {
-      puts("[BAR]");
-      free($2);
+    command_line job
+  | %empty
+  ;
+
+job:
+    command_list optional_ampersand NEWLINE {
+      xd_job_destroy(xd_current_job);
+      xd_current_job = xd_job_create();
+    }
+  | NEWLINE
+  | error NEWLINE {
+      xd_job_destroy(xd_current_job);
+      xd_current_job = xd_job_create();
+      yyerrok;
+      yyclearin;
+    }
+  ;
+
+optional_ampersand:
+    AMPERSAND {
+      xd_current_job->is_background = 1;
     }
   | %empty
+  ;
+
+command_list:
+    command_list PIPE command
+  | command
+  ;
+
+command:
+    executable argument_list io_redirection_list {
+      xd_job_add_command(xd_current_job, xd_current_command);
+      xd_current_command = NULL;
+    }
+  ;
+
+executable:
+    ARG {
+      xd_current_command = xd_command_create($1);
+      free($1);
+    }
+  ;
+
+argument_list:
+    argument_list argument
+  | %empty
+  ;
+
+argument:
+    ARG {
+      xd_command_add_arg(xd_current_command, $1);
+      free($1);
+    }
+  ;
+
+io_redirection_list:
+    io_redirection_list io_redirection
+  | %empty
+  ;
+
+io_redirection:
+    LT ARG {
+      // input redirection
+      if (xd_current_command->input_file != NULL) {
+        free(xd_current_command->input_file);
+      }
+      xd_current_command->input_file = $2;
+    }
+  | GT ARG {
+      // output redirection
+      if (xd_current_command->output_file != NULL) {
+        free(xd_current_command->output_file);
+      }
+      xd_current_command->output_file = $2;
+      xd_current_command->append_output = 0;
+    }
+  | GT_GT ARG  {
+      // output redirection (append)
+      if (xd_current_command->output_file != NULL) {
+        free(xd_current_command->output_file);
+      }
+      xd_current_command->output_file = $2;
+      xd_current_command->append_output = 1;
+    }
+  | TWO_GT ARG {
+      // error redirection
+      if (xd_current_command->error_file != NULL) {
+        free(xd_current_command->error_file);
+      }
+      xd_current_command->error_file = $2;
+      xd_current_command->append_error = 0;
+    }
+  | TWO_GT_GT ARG {
+      // error redirection (append)
+      if (xd_current_command->error_file != NULL) {
+        free(xd_current_command->error_file);
+      }
+      xd_current_command->error_file = $2;
+      xd_current_command->append_error = 1;
+    }
+  | GT_AMPERSAND ARG {
+      // output and error redirection
+      if (xd_current_command->output_file != NULL) {
+        free(xd_current_command->output_file);
+      }
+      xd_current_command->output_file = $2;
+      xd_current_command->append_output = 0;
+
+      if (xd_current_command->error_file != NULL) {
+        free(xd_current_command->error_file);
+      }
+      xd_current_command->error_file = strdup($2);
+      xd_current_command->append_error = 0;
+      if (xd_current_command->error_file == NULL) {
+        fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+            strerror(errno));
+        exit(EXIT_FAILURE);
+      }
+    }
+  | GT_GT_AMPERSAND ARG {
+      // output and error redirection
+      if (xd_current_command->output_file != NULL) {
+        free(xd_current_command->output_file);
+      }
+      xd_current_command->output_file = $2;
+      xd_current_command->append_output = 1;
+
+      if (xd_current_command->error_file != NULL) {
+        free(xd_current_command->error_file);
+      }
+      xd_current_command->error_file = strdup($2);
+      xd_current_command->append_error = 1;
+      if (xd_current_command->error_file == NULL) {
+        fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+            strerror(errno));
+        exit(EXIT_FAILURE);
+      }
+    }
   ;
 
 %%
