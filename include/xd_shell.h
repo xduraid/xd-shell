@@ -16,6 +16,8 @@
 #ifndef XD_SHELL_H
 #define XD_SHELL_H
 
+#include <sys/types.h>
+
 // ========================
 // Macros
 // ========================
@@ -38,5 +40,15 @@ extern int xd_sh_is_interactive;
  * @brief The shell's input prompt string.
  */
 extern char xd_sh_prompt[];
+
+/**
+ * @brief Process id of the main process.
+ */
+extern pid_t xd_sh_pid;
+
+/**
+ * @brief Process group id of the main process.
+ */
+extern pid_t xd_sh_pgid;
 
 #endif  // XD_SHELL_H
