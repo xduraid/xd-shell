@@ -28,7 +28,8 @@ CC_FLAGS = -std=gnu11 \
 					 -DXD_TESTING_MODE
 
 TEST_BINS = $(TESTS_BIN_DIR)/test_xd_command \
-						$(TESTS_BIN_DIR)/test_xd_job
+						$(TESTS_BIN_DIR)/test_xd_job \
+						$(TESTS_BIN_DIR)/test_xd_list
 
 .SUFFIXES:
 .PHONY: all run_tests run_unit_tests run_integration_tests clean help
@@ -43,6 +44,9 @@ $(TESTS_BIN_DIR)/test_xd_job: $(TESTS_SRC_DIR)/test_xd_job.c $(MAIN_SRC_DIR)/xd_
 	@mkdir -p $(TESTS_BIN_DIR)
 	$(CC) $(CC_FLAGS) -o $@ $^
 
+$(TESTS_BIN_DIR)/test_xd_list: $(TESTS_SRC_DIR)/test_xd_list.c $(MAIN_SRC_DIR)/xd_list.c
+	@mkdir -p $(TESTS_BIN_DIR)
+	$(CC) $(CC_FLAGS) -o $@ $^
 
 run_tests: run_unit_tests
 
