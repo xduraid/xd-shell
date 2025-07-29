@@ -51,6 +51,7 @@ int xd_sh_is_interactive = 0;
 char xd_sh_prompt[XD_SH_PROMPT_MAX_LENGTH] = {0};
 pid_t xd_sh_pid = 0;
 pid_t xd_sh_pgid = 0;
+volatile sig_atomic_t xd_sh_readline_running = 0;
 
 // ========================
 // Function Definitions
@@ -112,7 +113,14 @@ static void xd_sh_destroy() {
  */
 static void xd_sh_sigint_handler(int signum) {
   (void)signum;
-  write(STDERR_FILENO, "^C", 2);
+  int saved_errno = errno;
+  if (xd_sh_readline_running) {
+    write(STDERR_FILENO, "^C", 2);
+  }
+  else {
+    write(STDERR_FILENO, "\n", 1);
+  }
+  errno = saved_errno;
 }  // xd_sh_sigint_handler()
 
 /**

@@ -76,7 +76,9 @@ static int xd_getc() {
   if (xd_interactive_next_char == NULL || *xd_interactive_next_char == '\0') {
     errno = 0;
     xd_readline_prompt = xd_sh_prompt;
+    xd_sh_readline_running = 1;
     xd_interactive_next_char = xd_readline();
+    xd_sh_readline_running = 0;
     if (xd_interactive_next_char == NULL) {
       if (errno == EINTR) {
         // system call interrupt

@@ -60,6 +60,7 @@ xd_command_t *xd_command_create(const char *exec) {
   command->append_output = 0;
   command->append_error = 0;
   command->pid = 0;
+  command->wait_status = -1;
 
   return command;
 }  // xd_command_create()

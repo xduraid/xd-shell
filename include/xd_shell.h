@@ -16,6 +16,7 @@
 #ifndef XD_SHELL_H
 #define XD_SHELL_H
 
+#include <signal.h>
 #include <sys/types.h>
 
 // ========================
@@ -26,6 +27,10 @@
  * @brief The maximum length of the shell's input prompt.
  */
 #define XD_SH_PROMPT_MAX_LENGTH (5000)
+
+// ========================
+// Function Declarations
+// ========================
 
 // ========================
 // Variables
@@ -50,5 +55,10 @@ extern pid_t xd_sh_pid;
  * @brief Process group id of the main process.
  */
 extern pid_t xd_sh_pgid;
+
+/**
+ * @brief Indicates whether readline is currently running.
+ */
+extern volatile sig_atomic_t xd_sh_readline_running;
 
 #endif  // XD_SHELL_H

@@ -32,6 +32,9 @@ typedef struct xd_job_t {
   int command_count;        // Number of commands in the job
   int is_background;        // Whether to run as a background process
   pid_t pgid;               // PGID of the processes executing the job
+  int unreaped_count;       // Number of unreaped child processes
+  int stopped_count;        // Number of stopped child processes
+  int wait_status;          // Last wait status of children
 } xd_job_t;
 
 // ========================
@@ -73,5 +76,12 @@ void xd_job_destroy(xd_job_t *job);
  * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
  */
 int xd_job_add_command(xd_job_t *job, xd_command_t *command);
+
+/**
+ * @brief Executes the passed job.
+ *
+ * @param job A pointer to the `xd_job_t` structure to be executed.
+ */
+void xd_job_execute(xd_job_t *job);
 
 #endif  //  XD_JOB_H

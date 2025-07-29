@@ -36,6 +36,7 @@ typedef struct xd_command_t {
   char *error_file;   // File for stderr redirection
   int append_error;   // Whether to append to the error file
   pid_t pid;          // PID of the process executing the command
+  int wait_status;    // Status of command process when reaped with wait
 } xd_command_t;
 
 // ========================

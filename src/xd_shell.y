@@ -21,6 +21,7 @@
 
 #include "xd_command.h"
 #include "xd_job.h"
+#include "xd_jobs.h"
 
 // ========================
 // Macros
@@ -131,6 +132,10 @@ command_line:
 
 job:
     command_list optional_ampersand NEWLINE {
+      xd_jobs_sigchld_block();
+      xd_job_execute(xd_current_job);
+      xd_jobs_sigchld_unblock();
+
       xd_job_destroy(xd_current_job);
       xd_current_job = xd_job_create();
     }

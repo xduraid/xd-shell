@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "xd_command.h"
+#include "xd_job_executor.h"
 
 // ========================
 // Public Functions
@@ -38,6 +39,9 @@ xd_job_t *xd_job_create() {
   job->command_count = 0;
   job->is_background = 0;
   job->pgid = 0;
+  job->stopped_count = 0;
+  job->unreaped_count = 0;
+  job->wait_status = -1;
 
   return job;
 }  // xd_job_create()
@@ -73,3 +77,10 @@ int xd_job_add_command(xd_job_t *job, xd_command_t *command) {
 
   return 0;
 }  // xd_job_add_command()
+
+void xd_job_execute(xd_job_t *job) {
+  (void)job;
+#ifndef XD_TESTING_MODE
+  xd_job_executor(job);
+#endif  // XD_TESTING_MODE
+}  // xd_job_execute()
