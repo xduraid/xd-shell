@@ -35,6 +35,7 @@ typedef struct xd_job_t {
   int unreaped_count;       // Number of unreaped child processes
   int stopped_count;        // Number of stopped child processes
   int wait_status;          // Last wait status of children
+  int job_id;               // Id of the job (in jobs list)
 } xd_job_t;
 
 // ========================
@@ -76,6 +77,36 @@ void xd_job_destroy(xd_job_t *job);
  * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
  */
 int xd_job_add_command(xd_job_t *job, xd_command_t *command);
+
+/**
+ * @brief Returns the `xd_command_t` structure with the passed pid from the
+ * passed job.
+ *
+ * @param job A pointer to the `job_t` to be searched.
+ * @param pid The pid to search for.
+ *
+ * @return A pointer to the `xd_command_t` structure with the passed PID, or
+ * `NULL` if not found.
+ */
+xd_command_t *xd_job_get_command_with_pid(const xd_job_t *job, pid_t pid);
+
+/**
+ * @brief Checks whether the passed job is fully stopped.
+ *
+ * @param job A pointer to the `job_t` to be checked.
+ *
+ * @return `1` if the passed job is stopped, `0` otherwise.
+ */
+int xd_job_is_stopped(const xd_job_t *job);
+
+/**
+ * @brief Checks whether the passed job is alive (not fully reaped).
+ *
+ * @param job A pointer to the `job_t` to be checked.
+ *
+ * @return `1` if the passed job is alive, `0` otherwise.
+ */
+int xd_job_is_alive(const xd_job_t *job);
 
 /**
  * @brief Executes the passed job.

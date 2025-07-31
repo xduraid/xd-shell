@@ -42,6 +42,7 @@ xd_job_t *xd_job_create() {
   job->stopped_count = 0;
   job->unreaped_count = 0;
   job->wait_status = -1;
+  job->job_id = -1;
 
   return job;
 }  // xd_job_create()
@@ -77,6 +78,32 @@ int xd_job_add_command(xd_job_t *job, xd_command_t *command) {
 
   return 0;
 }  // xd_job_add_command()
+
+xd_command_t *xd_job_get_command_with_pid(const xd_job_t *job, pid_t pid) {
+  if (job == NULL) {
+    return NULL;
+  }
+  for (int i = 0; i < job->command_count; i++) {
+    if (job->commands[i]->pid == pid) {
+      return job->commands[i];
+    }
+  }
+  return NULL;
+}  // xd_job_get_command_with_pid()
+
+int xd_job_is_stopped(const xd_job_t *job) {
+  if (job == NULL) {
+    return 0;
+  }
+  return job->stopped_count > 0 && job->stopped_count == job->unreaped_count;
+}  // xd_job_is_stopped()
+
+int xd_job_is_alive(const xd_job_t *job) {
+  if (job == NULL) {
+    return 0;
+  }
+  return job->unreaped_count > 0;
+}  // xd_job_is_alive()
 
 void xd_job_execute(xd_job_t *job) {
   (void)job;

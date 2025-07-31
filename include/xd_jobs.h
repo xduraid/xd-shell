@@ -21,6 +21,45 @@
 #include "xd_job.h"
 
 /**
+ * @brief Initialize the jobs list.
+ */
+void xd_jobs_init();
+
+/**
+ * @brief Frees the memory allocated for the jobs list.
+ */
+void xd_jobs_destroy();
+
+/**
+ * @brief Adds the passed job to the end of the jobs list and gives it a job id.
+ *
+ * @param job A pointer to the job to be added.
+ */
+void xd_jobs_add(xd_job_t *job);
+
+/**
+ * @brief Returns the job that has a child process with the passed PID.
+ *
+ * @param pid pid The process id to look for.
+ *
+ * @return A pointer to the job that has a child with the passed PID, or `NULL`
+ * if not found or if the jobs list is not initialized yet.
+ */
+xd_job_t *xd_jobs_get_with_pid(pid_t pid);
+
+/**
+ * @brief Returns the job with the passed job id.
+ *
+ * @param job_id The id of the job.
+ *
+ * @return A pointer to the job with the passed job id, or `NULL` if not found
+ * or if the jobs list is not initialized yet.
+ */
+xd_job_t *xd_jobs_get_with_id(int job_id);
+
+void xd_jobs_refresh();
+
+/**
  * @brief Puts the process group with the passed id in control of the terminal.
  *
  * @param pgid Id of the process group to be put in control of the terminal.

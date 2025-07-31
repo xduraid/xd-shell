@@ -417,5 +417,18 @@ void xd_job_executor(xd_job_t *job) {
     else {
       xd_jobs_wait(xd_job);
     }
+
+    if (!xd_job_is_alive(xd_job)) {
+      xd_job_destroy(xd_job);
+    }
+    else {
+      xd_jobs_add(xd_job);
+    }
+  }
+  else {
+    xd_jobs_add(xd_job);
+    if (xd_sh_is_interactive) {
+      printf("[%d] %u\n", xd_job->job_id, xd_command->pid);
+    }
   }
 }  // xd_job_executor()

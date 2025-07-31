@@ -134,13 +134,21 @@ job:
     command_list optional_ampersand NEWLINE {
       xd_jobs_sigchld_block();
       xd_job_execute(xd_current_job);
+      xd_jobs_refresh();
       xd_jobs_sigchld_unblock();
 
-      xd_job_destroy(xd_current_job);
       xd_current_job = xd_job_create();
     }
-  | NEWLINE
+  | NEWLINE {
+      xd_jobs_sigchld_block();
+      xd_jobs_refresh();
+      xd_jobs_sigchld_unblock();
+    }
   | error NEWLINE {
+      xd_jobs_sigchld_block();
+      xd_jobs_refresh();
+      xd_jobs_sigchld_unblock();
+
       xd_job_destroy(xd_current_job);
       xd_current_job = xd_job_create();
       yyerrok;

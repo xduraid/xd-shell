@@ -21,7 +21,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
+#include "xd_command.h"
+#include "xd_job.h"
+#include "xd_jobs.h"
 
 // ========================
 // Function Declarations
@@ -30,6 +35,7 @@
 static void xd_sh_init() __attribute__((constructor));
 static void xd_sh_destroy() __attribute__((destructor));
 static void xd_sh_sigint_handler(int signum);
+static void xd_sh_sigchld_handler(int signum);
 static int xd_sh_setup_signal_handlers();
 static int xd_sh_run();
 
@@ -96,6 +102,7 @@ static void xd_sh_init() {
 
   xd_sh_pid = pid;
   xd_sh_pgid = pgid;
+  xd_jobs_init();
 }  // xd_sh_init()
 
 /**
@@ -104,6 +111,7 @@ static void xd_sh_init() {
 static void xd_sh_destroy() {
   yylex_destroy();
   yyparse_cleanup();
+  xd_jobs_destroy();
 }  // xd_sh_destroy()
 
 /**
@@ -122,6 +130,53 @@ static void xd_sh_sigint_handler(int signum) {
   }
   errno = saved_errno;
 }  // xd_sh_sigint_handler()
+
+static void xd_sh_sigchld_handler(int signum) {
+  (void)signum;
+  int status;
+  pid_t pid;
+  int saved_errno = errno;
+  while (1) {
+    pid = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED);
+    if (pid <= 0) {
+      if (pid == -1 && errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+
+    xd_job_t *job = xd_jobs_get_with_pid(pid);
+    xd_command_t *command = xd_job_get_command_with_pid(job, pid);
+    if (job == NULL || command == NULL) {
+      continue;
+    }
+
+    int was_stopped = WIFSTOPPED(command->wait_status);
+    command->wait_status = status;
+
+    if (job->commands[job->command_count - 1] == command) {
+      job->wait_status = status;
+    }
+
+    if (WIFCONTINUED(status)) {
+      if (was_stopped) {
+        job->stopped_count--;
+      }
+    }
+    else if (WIFSTOPPED(status)) {
+      if (!was_stopped) {
+        job->stopped_count++;
+      }
+    }
+    else if (WIFEXITED(status) || WIFSIGNALED(status)) {
+      if (was_stopped) {
+        job->stopped_count--;
+      }
+      job->unreaped_count--;
+    }
+  }
+  errno = saved_errno;
+}  // xd_sh_sigchld_handler()
 
 /**
  * @brief Sets up the signal handlers.
@@ -154,6 +209,12 @@ static int xd_sh_setup_signal_handlers() {
     if (sigaction(SIGINT, &signal_action, NULL) == -1) {
       return -1;
     }
+  }
+
+  signal_action.sa_flags = SA_RESTART;
+  signal_action.sa_handler = xd_sh_sigchld_handler;
+  if (sigaction(SIGCHLD, &signal_action, NULL) == -1) {
+    return -1;
   }
   return 0;
 }  // xd_sh_setup_signal_handlers()
