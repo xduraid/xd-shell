@@ -57,6 +57,10 @@ xd_job_t *xd_jobs_get_with_pid(pid_t pid);
  */
 xd_job_t *xd_jobs_get_with_id(int job_id);
 
+/**
+ * @brief Print job notifications, remove finished jobs, and update current
+ * (`+`) and previous (`-`) jobs.
+ */
 void xd_jobs_refresh();
 
 /**

@@ -22,6 +22,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "xd_command.h"
@@ -174,6 +175,12 @@ static void xd_sh_sigchld_handler(int signum) {
       }
       job->unreaped_count--;
     }
+
+    struct timespec time_spec;
+    clock_gettime(CLOCK_MONOTONIC, &time_spec);
+    job->last_active =
+        (uint64_t)time_spec.tv_sec * XD_SH_NANOSECONDS_PER_SECOND +
+        (uint64_t)time_spec.tv_nsec;
   }
   errno = saved_errno;
 }  // xd_sh_sigchld_handler()

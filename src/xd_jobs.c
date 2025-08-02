@@ -22,6 +22,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "xd_command.h"
@@ -40,8 +41,10 @@
 static void *xd_job_copy_func(void *data);
 static void xd_job_destroy_func(void *data);
 static int xd_job_comp_func(const void *data1, const void *data2);
+static int xd_job_is_newer(const xd_job_t *job1, const xd_job_t *job2);
 
 static void xd_remove_finished();
+static void xd_update_current_job();
 
 // ========================
 // Variables
@@ -56,6 +59,16 @@ static int xd_sigchld_block_count = 0;
  * @brief List of jobs.
  */
 static xd_list_t *xd_jobs = NULL;
+
+/**
+ * @brief Current job (`+`).
+ */
+static xd_job_t *xd_current_job = NULL;
+
+/**
+ * @brief Previous job (`-`).
+ */
+static xd_job_t *xd_previous_job = NULL;
 
 // ========================
 // Function Definitions
@@ -102,6 +115,36 @@ static int xd_job_comp_func(const void *data1, const void *data2) {
 }  // xd_job_comp_func()
 
 /**
+ * @brief Used while updating the current (`+`) and previous (`-`) jobs, to
+ * check whether the first passed job is newer than the second passed job.
+ *
+ * @param job1 The first job, to check if newer.
+ * @param job2 The second job, to check if older.
+ *
+ * @return `1` if the first passed job is newer than the second passed job, or
+ * `0` otherwise.
+ */
+static int xd_job_is_newer(const xd_job_t *job1, const xd_job_t *job2) {
+  if (job1 == NULL) {
+    return 0;
+  }
+  if (job2 == NULL) {
+    return 1;
+  }
+
+  int job1_stopped = xd_job_is_stopped(job1);
+  int job2_stopped = xd_job_is_stopped(job2);
+
+  if (job1_stopped != job2_stopped) {
+    return job1_stopped;
+  }
+  if (job1->last_active != job2->last_active) {
+    return job1->last_active > job2->last_active;
+  }
+  return job1->job_id > job2->job_id;
+}  // xd_job_is_newer()
+
+/**
  * @brief Remove all finished jobs from the jobs list.
  */
 static void xd_remove_finished() {
@@ -120,6 +163,34 @@ static void xd_remove_finished() {
     curr = next;
   }
 }  // xd_remove_finished()
+
+/**
+ * @brief Updates the current (`+`) and previous jobs (`-`).
+ */
+static void xd_update_current_job() {
+  if (xd_jobs == NULL) {
+    return;
+  }
+
+  xd_job_t *first = NULL;
+  xd_job_t *second = NULL;
+  for (xd_list_node_t *node = xd_jobs->head; node != NULL; node = node->next) {
+    xd_job_t *job = node->data;
+    if (!xd_job_is_alive(job)) {
+      continue;
+    }
+
+    if (xd_job_is_newer(job, first)) {
+      second = first;
+      first = job;
+    }
+    else if (job != first && xd_job_is_newer(job, second)) {
+      second = job;
+    }
+  }
+  xd_current_job = first;
+  xd_previous_job = second;
+}  // xd_update_current_job()
 
 // ========================
 // Public Functions
@@ -180,6 +251,7 @@ void xd_jobs_refresh() {
     return;
   }
   xd_remove_finished();
+  xd_update_current_job();
 }  // xd_jobs_refresh()
 
 int xd_jobs_put_in_foreground(pid_t pgid) {
@@ -212,7 +284,7 @@ void xd_jobs_wait(xd_job_t *job) {
   }
 
   int status;
-  while (job->unreaped_count - job->stopped_count > 0) {
+  while (xd_job_is_alive(job) && !xd_job_is_stopped(job)) {
     for (int i = 0; i < job->command_count; i++) {
       xd_command_t *command = job->commands[i];
       pid_t pid = command->pid;
@@ -250,6 +322,11 @@ void xd_jobs_wait(xd_job_t *job) {
       }
     }
   }
+
+  struct timespec time_spec;
+  clock_gettime(CLOCK_MONOTONIC, &time_spec);
+  job->last_active = (uint64_t)time_spec.tv_sec * XD_SH_NANOSECONDS_PER_SECOND +
+                     (uint64_t)time_spec.tv_nsec;
 
   if (!xd_sh_is_interactive) {
     return;

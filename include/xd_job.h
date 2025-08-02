@@ -16,6 +16,7 @@
 #ifndef XD_JOB_H
 #define XD_JOB_H
 
+#include <inttypes.h>
 #include <sys/types.h>
 
 #include "xd_command.h"
@@ -36,6 +37,7 @@ typedef struct xd_job_t {
   int stopped_count;        // Number of stopped child processes
   int wait_status;          // Last wait status of children
   int job_id;               // Id of the job (in jobs list)
+  uint64_t last_active;     // Last time job recived a signal
 } xd_job_t;
 
 // ========================

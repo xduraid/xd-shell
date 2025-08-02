@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "xd_command.h"
@@ -407,6 +408,11 @@ void xd_job_executor(xd_job_t *job) {
       close(xd_pipe_write_fd);
     }
   }  // for()
+
+  struct timespec time_spec;
+  clock_gettime(CLOCK_MONOTONIC, &time_spec);
+  job->last_active = (uint64_t)time_spec.tv_sec * XD_SH_NANOSECONDS_PER_SECOND +
+                     (uint64_t)time_spec.tv_nsec;
 
   if (!xd_job->is_background) {
     if (xd_sh_is_interactive) {

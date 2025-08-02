@@ -28,6 +28,11 @@
  */
 #define XD_SH_PROMPT_MAX_LENGTH (5000)
 
+/**
+ * @brief Number of nanoseconds in one second.
+ */
+#define XD_SH_NANOSECONDS_PER_SECOND 1000000000ULL
+
 // ========================
 // Function Declarations
 // ========================
