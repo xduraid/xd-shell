@@ -428,6 +428,7 @@ void xd_job_executor(xd_job_t *job) {
       xd_job_destroy(xd_job);
     }
     else {
+      xd_job->notify = 1;
       xd_jobs_add(xd_job);
     }
   }

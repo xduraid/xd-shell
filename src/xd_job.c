@@ -19,9 +19,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include "xd_command.h"
 #include "xd_job_executor.h"
+
+// ========================
+// Macros
+// ========================
+
+/**
+ * @brief Size of a small buffer used to format the status when printing the
+ * notifications.
+ */
+#define XD_JOBS_STATUS_BUFFER_SIZE (42)
 
 // ========================
 // Public Functions
@@ -43,6 +55,7 @@ xd_job_t *xd_job_create() {
   job->unreaped_count = 0;
   job->wait_status = -1;
   job->job_id = -1;
+  job->notify = 0;
 
   return job;
 }  // xd_job_create()
@@ -104,6 +117,58 @@ int xd_job_is_alive(const xd_job_t *job) {
   }
   return job->unreaped_count > 0;
 }  // xd_job_is_alive()
+
+void xd_job_print_status(xd_job_t *job, char marker, int print_pid) {
+  if (job == NULL) {
+    return;
+  }
+  char state_buf[XD_JOBS_STATUS_BUFFER_SIZE];
+  if (xd_job_is_stopped(job)) {
+    snprintf(state_buf, sizeof(state_buf), "Stopped");
+  }
+  else if (!xd_job_is_alive(job)) {
+    if (WIFSIGNALED(job->wait_status)) {
+      int termsig = WTERMSIG(job->wait_status);
+      if (WCOREDUMP(job->wait_status)) {
+        snprintf(state_buf, sizeof(state_buf), "%s (core dumped)",
+                 strsignal(termsig));
+      }
+      else {
+        snprintf(state_buf, sizeof(state_buf), "%s", strsignal(termsig));
+      }
+    }
+    else if (WIFEXITED(job->wait_status)) {
+      int exit_code = WEXITSTATUS(job->wait_status);
+      if (exit_code == 0) {
+        snprintf(state_buf, sizeof(state_buf), "Done");
+      }
+      else {
+        snprintf(state_buf, sizeof(state_buf), "Exit %d", exit_code);
+      }
+    }
+  }
+  else {
+    snprintf(state_buf, sizeof(state_buf), "Running");
+  }
+
+  printf("[%d]%c  ", job->job_id, marker);
+  if (print_pid) {
+    printf("%u ", job->commands[0]->pid);
+  }
+  printf("%-42s", state_buf);
+
+  for (int i = 0; i < job->command_count; i++) {
+    if (i > 0) {
+      printf(" |");
+    }
+    printf(" %s", job->commands[i]->str);
+  }
+  if (job->is_background && job->unreaped_count > 0 &&
+      job->unreaped_count != job->stopped_count) {
+    printf(" &");
+  }
+  printf("\n");
+}  // xd_job_print_status()
 
 void xd_job_execute(xd_job_t *job) {
   (void)job;

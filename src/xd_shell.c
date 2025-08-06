@@ -176,6 +176,10 @@ static void xd_sh_sigchld_handler(int signum) {
       job->unreaped_count--;
     }
 
+    if (!xd_job_is_alive(job) || xd_job_is_stopped(job)) {
+      job->notify = 1;
+    }
+
     struct timespec time_spec;
     clock_gettime(CLOCK_MONOTONIC, &time_spec);
     job->last_active =

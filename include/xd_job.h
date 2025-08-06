@@ -38,6 +38,7 @@ typedef struct xd_job_t {
   int wait_status;          // Last wait status of children
   int job_id;               // Id of the job (in jobs list)
   uint64_t last_active;     // Last time job recived a signal
+  int notify;               // Whether to notify the status change
 } xd_job_t;
 
 // ========================
@@ -109,6 +110,16 @@ int xd_job_is_stopped(const xd_job_t *job);
  * @return `1` if the passed job is alive, `0` otherwise.
  */
 int xd_job_is_alive(const xd_job_t *job);
+
+/**
+ * @brief Prints the status line of the passed `xd_job_t` structure.
+ *
+ * @param job A pointer to the `xd_job_t` structure to print its status line.
+ * @param marker A character to be printed after the job id, could be '+' for
+ * the most recent job, '-' for the second most recent job, or ' ' otherwise.
+ * @param print_pid Whether to print the job PID or not.
+ */
+void xd_job_print_status(xd_job_t *job, char marker, int print_pid);
 
 /**
  * @brief Executes the passed job.

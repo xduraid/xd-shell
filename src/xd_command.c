@@ -61,6 +61,7 @@ xd_command_t *xd_command_create(const char *exec) {
   command->append_error = 0;
   command->pid = 0;
   command->wait_status = -1;
+  command->str = NULL;
 
   return command;
 }  // xd_command_create()
@@ -76,6 +77,7 @@ void xd_command_destroy(xd_command_t *command) {
     free(command->argv[i]);
   }
   free((void *)command->argv);
+  free(command->str);
   free(command);
 }  // xd_command_destroy()
 

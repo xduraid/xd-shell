@@ -43,6 +43,7 @@ static void xd_job_destroy_func(void *data);
 static int xd_job_comp_func(const void *data1, const void *data2);
 static int xd_job_is_newer(const xd_job_t *job1, const xd_job_t *job2);
 
+static void xd_notify_status_change();
 static void xd_remove_finished();
 static void xd_update_current_job();
 
@@ -143,6 +144,28 @@ static int xd_job_is_newer(const xd_job_t *job1, const xd_job_t *job2) {
   }
   return job1->job_id > job2->job_id;
 }  // xd_job_is_newer()
+
+static void xd_notify_status_change() {
+  if (xd_jobs == NULL) {
+    return;
+  }
+
+  for (xd_list_node_t *node = xd_jobs->head; node != NULL; node = node->next) {
+    xd_job_t *job = node->data;
+    if (!job->notify) {
+      continue;
+    }
+    char marker = ' ';
+    if (job == xd_current_job) {
+      marker = '+';
+    }
+    else if (job == xd_previous_job) {
+      marker = '-';
+    }
+    xd_job_print_status(job, marker, 0);
+    job->notify = 0;
+  }
+}  // xd_notify_status_change()
 
 /**
  * @brief Remove all finished jobs from the jobs list.
@@ -249,6 +272,9 @@ xd_job_t *xd_jobs_get_with_id(int job_id) {
 void xd_jobs_refresh() {
   if (xd_jobs == NULL) {
     return;
+  }
+  if (xd_sh_is_interactive) {
+    xd_notify_status_change();
   }
   xd_remove_finished();
   xd_update_current_job();
