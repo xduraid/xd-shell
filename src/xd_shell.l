@@ -153,6 +153,10 @@ static int xd_getc() {
   return AMPERSAND;
 }
 
+"$?" {
+  printf("%d\n", xd_sh_last_exit_code);
+}
+
 [^ \t\n<>|&]+ {
   yylval.string = strdup(yytext);
   if (yylval.string == NULL) {

@@ -86,9 +86,9 @@ void xd_jobs_kill(xd_job_t *job);
  *
  * @param job The job to wait for.
  *
- * @note This function should be used only for foreground jobs.
+ * @return The last exit code of the passed job.
  */
-void xd_jobs_wait(xd_job_t *job);
+int xd_jobs_wait(xd_job_t *job);
 
 /**
  * @brief Blocks delivery of the `SIGCHLD` signal.

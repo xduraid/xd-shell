@@ -304,9 +304,9 @@ void xd_jobs_kill(xd_job_t *job) {
   }
 }  // xd_jobs_kill()
 
-void xd_jobs_wait(xd_job_t *job) {
+int xd_jobs_wait(xd_job_t *job) {
   if (job == NULL) {
-    return;
+    return EXIT_FAILURE;
   }
 
   int status;
@@ -354,8 +354,19 @@ void xd_jobs_wait(xd_job_t *job) {
   job->last_active = (uint64_t)time_spec.tv_sec * XD_SH_NANOSECONDS_PER_SECOND +
                      (uint64_t)time_spec.tv_nsec;
 
+  int exit_code = EXIT_SUCCESS;
+  if (WIFEXITED(job->wait_status)) {
+    exit_code = WEXITSTATUS(job->wait_status);
+  }
+  else if (WIFSIGNALED(job->wait_status)) {
+    exit_code = XD_SH_EXIT_CODE_SIGNAL_OFFSET + WTERMSIG(job->wait_status);
+  }
+  else if (WIFSTOPPED(job->wait_status)) {
+    exit_code = XD_SH_EXIT_CODE_SIGNAL_OFFSET + WSTOPSIG(job->wait_status);
+  }
+
   if (!xd_sh_is_interactive) {
-    return;
+    return exit_code;
   }
 
   if (xd_job_is_stopped(job)) {
@@ -371,6 +382,7 @@ void xd_jobs_wait(xd_job_t *job) {
     }
     fprintf(stderr, "\n");
   }
+  return exit_code;
 }  // xd_jobs_wait()
 
 void xd_jobs_sigchld_block() {

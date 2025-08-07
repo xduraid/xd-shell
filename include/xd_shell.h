@@ -33,6 +33,22 @@
  */
 #define XD_SH_NANOSECONDS_PER_SECOND 1000000000ULL
 
+/**
+ * @brief Exit code when command cannot be executed.
+ */
+#define XD_SH_EXIT_CODE_CANNOT_EXECUTE (126)
+
+/**
+ * @brief Exit code when command was not found.
+ */
+#define XD_SH_EXIT_CODE_NOT_FOUND (127)
+
+/**
+ * @brief Offset added to signal numbers to generate a shell-compatible exit
+ * status.
+ */
+#define XD_SH_EXIT_CODE_SIGNAL_OFFSET (128)
+
 // ========================
 // Function Declarations
 // ========================
@@ -65,5 +81,10 @@ extern pid_t xd_sh_pgid;
  * @brief Indicates whether readline is currently running.
  */
 extern volatile sig_atomic_t xd_sh_readline_running;
+
+/**
+ * @brief Exit code of the last executed command.
+ */
+extern int xd_sh_last_exit_code;
 
 #endif  // XD_SHELL_H

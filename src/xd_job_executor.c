@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -430,25 +431,46 @@ static void xd_execute_command() {
     close(xd_pipe_read_fd);
   }
 
-  if (xd_redirect_input() == -1) {
-    exit(EXIT_FAILURE);
-  }
-  if (xd_redirect_output() == -1) {
-    exit(EXIT_FAILURE);
-  }
-  if (xd_redirect_error() == -1) {
+  if (xd_redirect_input() == -1 || xd_redirect_output() == -1 ||
+      xd_redirect_error() == -1) {
     exit(EXIT_FAILURE);
   }
 
-  if (xd_builtins_is_builtin(xd_command->argv[0])) {
+  const char *executable = xd_command->argv[0];
+
+  if (xd_builtins_is_builtin(executable)) {
     int builtin_exit_code =
         xd_builtins_execute(xd_command->argc, xd_command->argv);
     exit(builtin_exit_code);
   }
 
-  execvp(xd_command->argv[0], xd_command->argv);
-  fprintf(stderr, "xd-shell: %s: %s\n", xd_command->argv[0], strerror(errno));
-  exit(EXIT_FAILURE);
+  execvp(executable, xd_command->argv);
+
+  // execvp failed
+
+  // check if the target is a directory
+  struct stat file_stat;
+  int slash_found = strchr(xd_command->argv[0], '/') != NULL;
+  if (slash_found && stat(executable, &file_stat) == 0 &&
+      S_ISDIR(file_stat.st_mode)) {
+    fprintf(stderr, "xd-shell: %s: Is a directory\n", executable);
+    exit(XD_SH_EXIT_CODE_CANNOT_EXECUTE);
+  }
+
+  // check if not found
+  if (errno == ENOENT) {
+    if (!slash_found) {
+      fprintf(stderr, "xd-shell: %s: command not found\n", executable);
+    }
+    else {
+      fprintf(stderr, "xd-shell: %s: %s\n", executable, strerror(errno));
+    }
+    exit(XD_SH_EXIT_CODE_NOT_FOUND);
+  }
+
+  // cannot be executed
+  fprintf(stderr, "xd-shell: %s: %s\n", executable, strerror(errno));
+  exit(XD_SH_EXIT_CODE_CANNOT_EXECUTE);
 }  // xd_execute_command()
 
 /**
@@ -472,18 +494,21 @@ static void xd_execute_builtin_no_fork() {
   xd_original_error_fd = -1;
 
   if (xd_backup_fds() == -1) {
+    xd_sh_last_exit_code = EXIT_FAILURE;
     return;
   }
 
   if (xd_redirect_input() == -1 || xd_redirect_output() == -1 ||
       xd_redirect_error() == -1) {
+    xd_sh_last_exit_code = EXIT_FAILURE;
   }
   else {
-    xd_builtins_execute(xd_command->argc, xd_command->argv);
-    fflush(stdout);
-    fflush(stderr);
+    xd_sh_last_exit_code =
+        xd_builtins_execute(xd_command->argc, xd_command->argv);
   }
 
+  fflush(stdout);
+  fflush(stderr);
   xd_restore_fds();
 }  // xd_execute_builtin_no_fork()
 
@@ -505,6 +530,7 @@ static void xd_failure_cleanup() {
   if (xd_sh_is_interactive) {
     xd_jobs_put_in_foreground(xd_sh_pgid);
   }
+  xd_sh_last_exit_code = EXIT_FAILURE;
 }  // xd_failure_cleanup()
 
 // ========================
@@ -585,11 +611,11 @@ void xd_job_executor(xd_job_t *job) {
   if (!xd_job->is_background) {
     if (xd_sh_is_interactive) {
       xd_jobs_put_in_foreground(xd_job->pgid);
-      xd_jobs_wait(xd_job);
+      xd_sh_last_exit_code = xd_jobs_wait(xd_job);
       xd_jobs_put_in_foreground(xd_sh_pgid);
     }
     else {
-      xd_jobs_wait(xd_job);
+      xd_sh_last_exit_code = xd_jobs_wait(xd_job);
     }
 
     if (!xd_job_is_alive(xd_job)) {
@@ -605,5 +631,6 @@ void xd_job_executor(xd_job_t *job) {
     if (xd_sh_is_interactive) {
       printf("[%d] %u\n", xd_job->job_id, xd_command->pid);
     }
+    xd_sh_last_exit_code = EXIT_SUCCESS;
   }
 }  // xd_job_executor()
