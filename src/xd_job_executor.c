@@ -23,6 +23,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "xd_builtins.h"
 #include "xd_command.h"
 #include "xd_job.h"
 #include "xd_jobs.h"
@@ -43,11 +44,15 @@
 
 static int xd_reset_signal_handlers();
 
+static int xd_backup_fds();
+static void xd_restore_fds();
 static int xd_redirect_input();
 static int xd_redirect_output();
 static int xd_redirect_error();
 
 static void xd_execute_command();
+
+static void xd_execute_builtin_no_fork();
 
 static void xd_failure_cleanup();
 
@@ -64,6 +69,21 @@ static xd_job_t *xd_job = NULL;
  * @brief The current command being executed.
  */
 static xd_command_t *xd_command = NULL;
+
+/**
+ * @brief Original `stdin` fd before redirection.
+ */
+static int xd_original_input_fd = -1;
+
+/**
+ * @brief Original `stdout` fd before redirection.
+ */
+static int xd_original_output_fd = -1;
+
+/**
+ * @brief Original `stderr` fd before redirection.
+ */
+static int xd_original_error_fd = -1;
 
 /**
  * @brief The fd of the current pipe's read end.
@@ -126,6 +146,105 @@ static int xd_reset_signal_handlers() {
   }
   return 0;
 }  // xd_reset_signal_handlers()
+
+/**
+ * @brief Saves a copy of the original `stdin`, `stdout`, and `stderr` fds for
+ * restoration later.
+ *
+ * @return `0` on success, `-1` on failure.
+ */
+static int xd_backup_fds() {
+  if (xd_command->input_file != NULL) {
+    xd_original_input_fd = dup(STDIN_FILENO);
+    if (xd_original_input_fd == -1) {
+      fprintf(stderr, "xd-shell: failed to backup stdin fd: %s\n",
+              strerror(errno));
+      return -1;
+    }
+  }
+
+  if (xd_command->output_file != NULL) {
+    xd_original_output_fd = dup(STDOUT_FILENO);
+    if (xd_original_output_fd == -1) {
+      fprintf(stderr, "xd-shell: failed to backup stdout fd: %s\n",
+              strerror(errno));
+      close(xd_original_input_fd);
+      return -1;
+    }
+  }
+
+  if (xd_command->error_file != NULL) {
+    xd_original_error_fd = dup(STDERR_FILENO);
+    if (xd_original_error_fd == -1) {
+      fprintf(stderr, "xd-shell: failed to backup stderr fd: %s\n",
+              strerror(errno));
+      close(xd_original_input_fd);
+      close(xd_original_output_fd);
+      return -1;
+    }
+  }
+  return 0;
+}  // xd_backup_fds()
+
+/**
+ * @brief Restore the original `stdin`, `stdout`, and `stderr` fds.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` if restoring original fds
+ * failed.
+ */
+static void xd_restore_fds() {
+  int failed = 0;
+
+  while (xd_command->input_file != NULL &&
+         dup2(xd_original_input_fd, STDIN_FILENO) == -1) {
+    if (errno == EINTR) {
+      continue;
+    }
+    fprintf(stderr, "xd-shell: failed to restore stdin fd: %s\n",
+            strerror(errno));
+    failed = 1;
+    break;
+  }
+
+  while (xd_command->output_file != NULL &&
+         dup2(xd_original_output_fd, STDOUT_FILENO) == -1) {
+    if (errno == EINTR) {
+      continue;
+    }
+    fprintf(stderr, "xd-shell: failed to restore stdout fd: %s\n",
+            strerror(errno));
+    failed = 1;
+    break;
+  }
+
+  while (xd_command->error_file != NULL &&
+         dup2(xd_original_error_fd, STDERR_FILENO) == -1) {
+    if (errno == EINTR) {
+      continue;
+    }
+    fprintf(stderr, "xd-shell: failed to restore stderr fd: %s\n",
+            strerror(errno));
+    failed = 1;
+    break;
+  }
+
+  if (xd_original_input_fd != -1) {
+    close(xd_original_input_fd);
+  }
+  if (xd_original_output_fd != -1) {
+    close(xd_original_output_fd);
+  }
+  if (xd_original_error_fd != -1) {
+    close(xd_original_error_fd);
+  }
+
+  if (failed) {
+    fprintf(
+        stderr,
+        "xd-shell: fatal error: couldn't restore original fds... exiting\n");
+    exit(EXIT_FAILURE);
+  }
+}  // xd_restore_fds()
 
 /**
  * @brief Handles `stdin` redirection for the current command to be executed
@@ -321,10 +440,52 @@ static void xd_execute_command() {
     exit(EXIT_FAILURE);
   }
 
+  if (xd_builtins_is_builtin(xd_command->argv[0])) {
+    int builtin_exit_code =
+        xd_builtins_execute(xd_command->argc, xd_command->argv);
+    exit(builtin_exit_code);
+  }
+
   execvp(xd_command->argv[0], xd_command->argv);
   fprintf(stderr, "xd-shell: %s: %s\n", xd_command->argv[0], strerror(errno));
   exit(EXIT_FAILURE);
 }  // xd_execute_command()
+
+/**
+ * @brief Handles the execution of a builtin command in the parent process
+ * without fork.
+ *
+ * This function is used when the job is foreground (no &), and contains a
+ * signal command which is a builtin command.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` if restoring original fds
+ * failed after redirection.
+ */
+static void xd_execute_builtin_no_fork() {
+  xd_command = xd_job->commands[0];
+
+  xd_is_first_command = 1;
+  xd_is_last_command = 1;
+
+  xd_original_input_fd = -1;
+  xd_original_output_fd = -1;
+  xd_original_error_fd = -1;
+
+  if (xd_backup_fds() == -1) {
+    return;
+  }
+
+  if (xd_redirect_input() == -1 || xd_redirect_output() == -1 ||
+      xd_redirect_error() == -1) {
+  }
+  else {
+    xd_builtins_execute(xd_command->argc, xd_command->argv);
+    fflush(stdout);
+    fflush(stderr);
+  }
+
+  xd_restore_fds();
+}  // xd_execute_builtin_no_fork()
 
 /**
  * @brief Performs cleanup actions after a job execution failure.
@@ -352,6 +513,13 @@ static void xd_failure_cleanup() {
 
 void xd_job_executor(xd_job_t *job) {
   xd_job = job;
+
+  if (xd_job->command_count == 1 && !xd_job->is_background &&
+      xd_builtins_is_builtin(xd_job->commands[0]->argv[0])) {
+    xd_execute_builtin_no_fork();
+    xd_job_destroy(xd_job);
+    return;
+  }
 
   xd_job->pgid = 0;
   xd_pipe_read_fd = -1;
