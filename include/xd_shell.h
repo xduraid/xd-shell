@@ -49,6 +49,11 @@
  */
 #define XD_SH_EXIT_CODE_SIGNAL_OFFSET (128)
 
+/**
+ * @brief The exit code when args are invalid.
+ */
+#define XD_SH_EXIT_CODE_USAGE (2)
+
 // ========================
 // Function Declarations
 // ========================

@@ -162,7 +162,7 @@ static void xd_notify_status_change() {
     else if (job == xd_previous_job) {
       marker = '-';
     }
-    xd_job_print_status(job, marker, 0);
+    xd_job_print_status(job, marker, 0, 0);
     job->notify = 0;
   }
 }  // xd_notify_status_change()
@@ -268,6 +268,25 @@ xd_job_t *xd_jobs_get_with_id(int job_id) {
   }
   return NULL;
 }  // xd_jobs_get_with_id()
+
+void xd_jobs_print_status_all(int detailed, int print_pids) {
+  if (xd_jobs == NULL) {
+    return;
+  }
+
+  for (xd_list_node_t *node = xd_jobs->head; node != NULL; node = node->next) {
+    xd_job_t *job = node->data;
+    char marker = ' ';
+    if (job == xd_current_job) {
+      marker = '+';
+    }
+    else if (job == xd_previous_job) {
+      marker = '-';
+    }
+    xd_job_print_status(job, marker, detailed, print_pids);
+    job->notify = 0;
+  }
+}  // xd_jobs_print_status_all()
 
 void xd_jobs_refresh() {
   if (xd_jobs == NULL) {

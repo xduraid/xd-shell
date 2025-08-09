@@ -115,11 +115,14 @@ int xd_job_is_alive(const xd_job_t *job);
  * @brief Prints the status line of the passed `xd_job_t` structure.
  *
  * @param job A pointer to the `xd_job_t` structure to print its status line.
- * @param marker A character to be printed after the job id, could be '+' for
- * the most recent job, '-' for the second most recent job, or ' ' otherwise.
+ * @param marker A character to be printed after the job id, could be `'+'` for
+ * the most recent job, `'-'` for the second most recent job, or `' '`
+ * otherwise.
+ * @param detailed Whether to print detailed status of each process.
  * @param print_pid Whether to print the job PID or not.
  */
-void xd_job_print_status(xd_job_t *job, char marker, int print_pid);
+void xd_job_print_status(xd_job_t *job, char marker, int detailed,
+                         int print_pid);
 
 /**
  * @brief Executes the passed job.

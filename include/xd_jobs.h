@@ -58,6 +58,14 @@ xd_job_t *xd_jobs_get_with_pid(pid_t pid);
 xd_job_t *xd_jobs_get_with_id(int job_id);
 
 /**
+ * @brief Prints the status of all the jobs.
+ *
+ * @param detailed Whether to print the detailed status.
+ * @param print_pids Whether to print the process ID(s).
+ */
+void xd_jobs_print_status_all(int detailed, int print_pids);
+
+/**
  * @brief Print job notifications, remove finished jobs, and update current
  * (`+`) and previous (`-`) jobs.
  */
