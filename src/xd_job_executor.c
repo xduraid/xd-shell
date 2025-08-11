@@ -525,7 +525,7 @@ static void xd_failure_cleanup() {
   if (xd_pipe_write_fd != -1) {
     close(xd_pipe_write_fd);
   }
-  xd_jobs_kill(xd_job);
+  xd_jobs_kill(xd_job, SIGKILL);
   xd_jobs_wait(xd_job);
   if (xd_sh_is_interactive) {
     xd_jobs_put_in_foreground(xd_sh_pgid);

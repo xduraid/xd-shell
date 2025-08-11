@@ -58,6 +58,20 @@ xd_job_t *xd_jobs_get_with_pid(pid_t pid);
 xd_job_t *xd_jobs_get_with_id(int job_id);
 
 /**
+ * @brief Returns the current job (`+`).
+ *
+ * @return A pointer to the current job, or `NULL` if doesn't exist.
+ */
+xd_job_t *xd_jobs_get_current();
+
+/**
+ * @brief Returns the previous job (`-`).
+ *
+ * @return A pointer to the previous job, or `NULL` if doesn't exist.
+ */
+xd_job_t *xd_jobs_get_previous();
+
+/**
  * @brief Prints the status of all the jobs.
  *
  * @param detailed Whether to print the detailed status.
@@ -83,11 +97,15 @@ void xd_jobs_refresh();
 int xd_jobs_put_in_foreground(pid_t pgid);
 
 /**
- * @brief Kills all processes of the passed job.
+ * @brief Sends the signal specified by the passed signal number to each process
+ * in the passed job using their PIDs.
  *
  * @param job The job to kill its processes.
+ * @param signum The signal number to send.
+ *
+ * @return `0` on success, or `-1` on failure.
  */
-void xd_jobs_kill(xd_job_t *job);
+int xd_jobs_kill(xd_job_t *job, int signum);
 
 /**
  * @brief Waits for the passed job to terminate or stop.

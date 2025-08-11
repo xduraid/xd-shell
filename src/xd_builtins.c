@@ -15,6 +15,7 @@
 
 #include "xd_builtins.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -24,6 +25,8 @@
 
 #include "xd_jobs.h"
 #include "xd_shell.h"
+#include "xd_signals.h"
+#include "xd_utils.h"
 
 // ========================
 // Typedefs
@@ -50,6 +53,10 @@ static void xd_jobs_usage();
 static void xd_jobs_help();
 static int xd_jobs(int argc, char **argv);
 
+static void xd_kill_usage();
+static void xd_kill_help();
+static int xd_kill(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -59,6 +66,7 @@ static int xd_jobs(int argc, char **argv);
  */
 static const xd_builtin_mapping_t xd_builtins[] = {
     {"jobs", xd_jobs},
+    {"kill", xd_kill},
 };
 
 /**
@@ -139,6 +147,164 @@ static int xd_jobs(int argc, char **argv) {
   xd_jobs_print_status_all(detailed, print_pids);
   return EXIT_SUCCESS;
 }  // xd_jobs()
+
+/**
+ * @brief Prints usage information for the `kill` builtin.
+ */
+static void xd_kill_usage() {
+  fprintf(
+      stderr,
+      "kill: usage: kill [-s sigspec | -n signum] pid | jobspec ... or kill "
+      "-l\n");
+}  // xd_kill_usage()
+
+/**
+ * @brief Prints detailed help information for the `kill` builtin.
+ */
+static void xd_kill_help() {
+  printf(
+      "kill: kill [-s sigspec | -n signum] pid | jobspec ... or kill -l\n"
+      "    Send a signal to a job or process.\n"
+      "\n"
+      "    Send the processes specified by pid or jobspec the signal named by\n"
+      "    sigspec or signum. If neither sigspec nor signum is given, then\n"
+      "    SIGTERM is assumed.\n"
+      "\n"
+      "    Options:\n"
+      "      -s sig    sig is a signal name\n"
+      "      -n sig    sig is a signal number\n"
+      "      -l        list the signal names and their numbers\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_kill_help()
+
+/**
+ * @brief Executor of `kill` builtin command.
+ */
+static int xd_kill(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_kill_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int print_sigs = 0;
+  char *sigspec = NULL;
+
+  // parse options
+  int opt;
+  int getopt_done = 0;
+  int idx = 1;
+  while (!getopt_done && (opt = getopt(argc, argv, "+:ls:n:")) != -1) {
+    switch (opt) {
+      case 'l':
+        print_sigs = 1;
+        break;
+      case 's':
+      case 'n':
+        sigspec = optarg;
+        break;
+      case ':':
+        fprintf(stderr, "xd-shell: kill: -%c: option requires an argument\n",
+                optopt);
+        xd_kill_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+      case '?':
+      default:
+        if (isdigit(argv[idx][1])) {
+          getopt_done = 1;
+          break;
+        }
+        fprintf(stderr, "xd-shell: kill: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_kill_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+    if (!getopt_done) {
+      idx = optind;
+    }
+  }
+
+  // list signals
+  if (print_sigs) {
+    xd_signals_print_all();
+    return EXIT_SUCCESS;
+  }
+
+  // parse sigspec if provided
+  int signum = SIGTERM;
+  if (sigspec != NULL) {
+    signum = xd_signals_signal_number(sigspec);
+    if (signum == -1) {
+      fprintf(stderr, "xd-shell: kill: %s: invalid signal specification\n",
+              sigspec);
+      return EXIT_FAILURE;
+    }
+  }
+
+  int operand_count = argc - idx;
+  if (operand_count < 1) {
+    fprintf(stderr, "xd-shell: kill: missing pid or jobspec\n");
+    xd_kill_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  // parse pids and jobspecs
+
+  int success_count = 0;
+  for (int i = 0; i < operand_count; i++) {
+    const char *operand = argv[idx++];
+    xd_job_t *job = NULL;
+    pid_t pid = -1;
+    if (*operand == '%') {
+      if (strcmp(operand, "%%") == 0 || strcmp(operand, "%+") == 0) {
+        job = xd_jobs_get_current();
+      }
+      else if (strcmp(operand, "%-") == 0) {
+        job = xd_jobs_get_previous();
+      }
+      else {
+        long job_id = -1;
+        xd_utils_strtol(operand + 1, &job_id);
+        job = xd_jobs_get_with_id((int)job_id);
+      }
+
+      if (job == NULL) {
+        fprintf(stderr, "xd-shell: kill: %s: no such job\n", operand);
+        continue;
+      }
+      pid = -job->pgid;
+    }
+    else {
+      long temp_pid = -1;
+      if (xd_utils_strtol(operand, &temp_pid) == -1) {
+        fprintf(stderr,
+                "xd-shell: kill: %s: arguments must be process or job IDs\n",
+                operand);
+        continue;
+      }
+
+      pid = (int)temp_pid;
+    }
+
+    // kill to jobspec in non-interactive mode, kill each pid separately
+    if (job != NULL && !xd_sh_is_interactive) {
+      if (xd_jobs_kill(job, signum) == -1) {
+        continue;
+      }
+      success_count++;
+    }
+    else if (kill(pid, signum) == -1) {
+      fprintf(stderr, "xd-shell: kill: (%s) - %s\n", operand, strerror(errno));
+      continue;
+    }
+    success_count++;
+  }
+
+  return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
+}  // xd_kill()
 
 // ========================
 // Public Functions

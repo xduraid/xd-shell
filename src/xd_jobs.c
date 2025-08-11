@@ -269,6 +269,20 @@ xd_job_t *xd_jobs_get_with_id(int job_id) {
   return NULL;
 }  // xd_jobs_get_with_id()
 
+xd_job_t *xd_jobs_get_current() {
+  if (xd_jobs == NULL) {
+    return NULL;
+  }
+  return xd_current_job;
+}  // xd_jobs_get_current()
+
+xd_job_t *xd_jobs_get_previous() {
+  if (xd_jobs == NULL) {
+    return NULL;
+  }
+  return xd_previous_job;
+}  // xd_jobs_get_previous()
+
 void xd_jobs_print_status_all(int detailed, int print_pids) {
   if (xd_jobs == NULL) {
     return;
@@ -310,17 +324,21 @@ int xd_jobs_put_in_foreground(pid_t pgid) {
   return 0;
 }  // xd_jobs_put_in_foreground()
 
-void xd_jobs_kill(xd_job_t *job) {
+int xd_jobs_kill(xd_job_t *job, int signum) {
   if (job == NULL) {
-    return;
+    return -1;
   }
   for (int i = 0; i < job->command_count; i++) {
     pid_t pid = job->commands[i]->pid;
     if (pid == 0) {
       continue;  // failure before fork in xd_job_executor()
     }
-    kill(pid, SIGKILL);
+    if (kill(pid, signum) == -1) {
+      fprintf(stderr, "xd-shell: kill: %s\n", strerror(errno));
+      return -1;
+    }
   }
+  return 0;
 }  // xd_jobs_kill()
 
 int xd_jobs_wait(xd_job_t *job) {
