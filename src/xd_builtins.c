@@ -61,6 +61,10 @@ static void xd_fg_usage();
 static void xd_fg_help();
 static int xd_fg(int argc, char **argv);
 
+static void xd_bg_usage();
+static void xd_bg_help();
+static int xd_bg(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -72,6 +76,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"jobs", xd_jobs},
     {"kill", xd_kill},
     {"fg",   xd_fg  },
+    {"bg",   xd_bg  },
 };
 
 /**
@@ -436,6 +441,109 @@ static int xd_fg(int argc, char **argv) {
 
   return exit_status;
 }  // xd_fg()
+
+/**
+ * @brief Prints usage information for the `bg` builtin.
+ */
+static void xd_bg_usage() {
+  fprintf(stderr, "bg: usage: bg [job_spec ...]\n");
+}  // xd_bg_usage()
+
+/**
+ * @brief Prints detailed help information for the `bg` builtin.
+ */
+static void xd_bg_help() {
+  printf(
+      "bg: bg [job_spec ...]\n"
+      "    Move jobs to the background.\n"
+      "\n"
+      "    Place jobs identified by job_spec's in background, as if they\n"
+      "    started with `&`. If job_spec is not present, the shell's notion\n"
+      "    of the current job is used.\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Success unless job control is not enabled or an error occurs.\n");
+}  // xd_bg_help()
+
+/**
+ * @brief Executor of `bg` builtin command.
+ */
+static int xd_bg(int argc, char **argv) {
+  if (!xd_sh_is_interactive || !isatty(STDIN_FILENO) || getpid() != xd_sh_pid) {
+    fprintf(stderr, "xd-shell: bg: no job control\n");
+    return EXIT_FAILURE;
+  }
+
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_bg_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int opt;
+  while ((opt = getopt(argc, argv, "")) != -1) {
+    switch (opt) {
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: bg: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_bg_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  int success_count = 0;
+  int idx = 1;
+  do {
+    const char *operand = argv[idx];
+    xd_job_t *job = NULL;
+
+    if (operand == NULL) {
+      job = xd_jobs_get_current();
+    }
+    else if (*operand == '%') {
+      if (strcmp(operand, "%%") == 0 || strcmp(operand, "%+") == 0) {
+        job = xd_jobs_get_current();
+      }
+      else if (strcmp(operand, "%-") == 0) {
+        job = xd_jobs_get_previous();
+      }
+      else {
+        long job_id = -1;
+        xd_utils_strtol(operand + 1, &job_id);
+        job = xd_jobs_get_with_id((int)job_id);
+      }
+    }
+
+    if (job == NULL || !xd_job_is_alive(job)) {
+      fprintf(stderr, "xd-shell: bg: %s: no such job\n",
+              operand == NULL ? "current" : operand);
+      continue;
+    }
+
+    if (!xd_job_is_stopped(job)) {
+      fprintf(stderr, "xd-shell: bg: job %d already in background\n",
+              job->job_id);
+      success_count++;
+      continue;
+    }
+
+    if (kill(-job->pgid, SIGCONT) == -1) {
+      fprintf(stderr, "xd-shell: bg: %s: %s\n",
+              operand == NULL ? "current" : operand, strerror(errno));
+      continue;
+    }
+
+    xd_jobs_wait_non_blocking(job);
+    job->notify = 1;
+    job->is_background = 1;
+
+    success_count++;
+  } while (++idx < argc);
+
+  return success_count == argc - 1 ? EXIT_SUCCESS : EXIT_FAILURE;
+}  // xd_bg()
 
 // ========================
 // Public Functions
