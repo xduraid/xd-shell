@@ -117,6 +117,14 @@ int xd_jobs_kill(xd_job_t *job, int signum);
 int xd_jobs_wait(xd_job_t *job);
 
 /**
+ * @brief Non-blocking wait, used to update the status of the passed job after
+ * sending a signal.
+ *
+ * @param job The job to be waited/updated.
+ */
+void xd_jobs_wait_non_blocking(xd_job_t *job);
+
+/**
  * @brief Blocks delivery of the `SIGCHLD` signal.
  *
  * @note This function must be paired with a corresponding call to

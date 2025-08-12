@@ -126,6 +126,7 @@ xd_job_t *xd_job_create() {
   job->wait_status = -1;
   job->job_id = -1;
   job->notify = 0;
+  job->has_tty_modes = 0;
 
   return job;
 }  // xd_job_create()
@@ -188,6 +189,23 @@ int xd_job_is_alive(const xd_job_t *job) {
   return job->unreaped_count > 0;
 }  // xd_job_is_alive()
 
+void xd_job_print_string(xd_job_t *job) {
+  if (job == NULL) {
+    return;
+  }
+
+  for (int i = 0; i < job->command_count; i++) {
+    printf("%s", job->commands[i]->str);
+    if (i < job->command_count - 1) {
+      printf(" | ");
+    }
+  }
+  if (job->is_background && xd_job_is_alive(job) && !xd_job_is_stopped(job)) {
+    printf(" &");
+  }
+  printf("\n");
+}
+
 void xd_job_print_status(xd_job_t *job, char marker, int detailed,
                          int print_pid) {
   if (job == NULL) {
@@ -233,16 +251,7 @@ void xd_job_print_status(xd_job_t *job, char marker, int detailed,
   }
   printf("%-42s", state_buf);
 
-  for (int i = 0; i < job->command_count; i++) {
-    if (i > 0) {
-      printf(" |");
-    }
-    printf(" %s", job->commands[i]->str);
-  }
-  if (job->is_background && xd_job_is_alive(job) && !xd_job_is_stopped(job)) {
-    printf(" &");
-  }
-  printf("\n");
+  xd_job_print_string(job);
 }  // xd_job_print_status()
 
 void xd_job_execute(xd_job_t *job) {

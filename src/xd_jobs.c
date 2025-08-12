@@ -422,6 +422,58 @@ int xd_jobs_wait(xd_job_t *job) {
   return exit_code;
 }  // xd_jobs_wait()
 
+void xd_jobs_wait_non_blocking(xd_job_t *job) {
+  if (job == NULL) {
+    return;
+  }
+
+  int status;
+  pid_t pid;
+  while (1) {
+    pid = waitpid(-job->pgid, &status, WNOHANG | WUNTRACED | WCONTINUED);
+    if (pid <= 0) {
+      if (pid == -1 && errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+
+    xd_command_t *command = xd_job_get_command_with_pid(job, pid);
+    if (command == NULL) {
+      continue;
+    }
+
+    int was_stopped = WIFSTOPPED(command->wait_status);
+    command->wait_status = status;
+
+    if (job->commands[job->command_count - 1] == command) {
+      job->wait_status = status;
+    }
+
+    if (WIFCONTINUED(status)) {
+      if (was_stopped) {
+        job->stopped_count--;
+      }
+    }
+    else if (WIFSTOPPED(status)) {
+      if (!was_stopped) {
+        job->stopped_count++;
+      }
+    }
+    else if (WIFEXITED(status) || WIFSIGNALED(status)) {
+      if (was_stopped) {
+        job->stopped_count--;
+      }
+      job->unreaped_count--;
+    }
+  }
+
+  struct timespec time_spec;
+  clock_gettime(CLOCK_MONOTONIC, &time_spec);
+  job->last_active = (uint64_t)time_spec.tv_sec * XD_SH_NANOSECONDS_PER_SECOND +
+                     (uint64_t)time_spec.tv_nsec;
+}  // xd_jobs_wait_non_blocking()
+
 void xd_jobs_sigchld_block() {
   if (xd_sigchld_block_count == 0) {
     sigset_t mask;

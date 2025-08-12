@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -529,7 +530,14 @@ static void xd_failure_cleanup() {
   xd_jobs_wait(xd_job);
   if (xd_sh_is_interactive) {
     xd_jobs_put_in_foreground(xd_sh_pgid);
+    while (tcsetattr(STDIN_FILENO, TCSADRAIN, &xd_sh_tty_modes) == -1) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
+    }
   }
+  xd_job_destroy(xd_job);
   xd_sh_last_exit_code = EXIT_FAILURE;
 }  // xd_failure_cleanup()
 
@@ -538,6 +546,10 @@ static void xd_failure_cleanup() {
 // ========================
 
 void xd_job_executor(xd_job_t *job) {
+  if (xd_sh_is_interactive) {
+    tcgetattr(STDIN_FILENO, &xd_sh_tty_modes);
+  }
+
   xd_job = job;
 
   if (xd_job->command_count == 1 && !xd_job->is_background &&
@@ -624,12 +636,22 @@ void xd_job_executor(xd_job_t *job) {
     else {
       xd_job->notify = 1;
       xd_jobs_add(xd_job);
+      if (tcgetattr(STDIN_FILENO, &xd_job->tty_modes) == 0) {
+        xd_job->has_tty_modes = 1;
+      }
+    }
+
+    while (tcsetattr(STDIN_FILENO, TCSADRAIN, &xd_sh_tty_modes) == -1) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
     }
   }
   else {
     xd_jobs_add(xd_job);
     if (xd_sh_is_interactive) {
-      printf("[%d] %u\n", xd_job->job_id, xd_command->pid);
+      printf("[%d] %d\n", xd_job->job_id, xd_command->pid);
     }
     xd_sh_last_exit_code = EXIT_SUCCESS;
   }

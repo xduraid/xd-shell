@@ -92,4 +92,9 @@ extern volatile sig_atomic_t xd_sh_readline_running;
  */
 extern int xd_sh_last_exit_code;
 
+/**
+ * @brief The current modes for the shell.
+ */
+extern struct termios xd_sh_tty_modes;
+
 #endif  // XD_SHELL_H

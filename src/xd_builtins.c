@@ -57,6 +57,10 @@ static void xd_kill_usage();
 static void xd_kill_help();
 static int xd_kill(int argc, char **argv);
 
+static void xd_fg_usage();
+static void xd_fg_help();
+static int xd_fg(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -67,6 +71,7 @@ static int xd_kill(int argc, char **argv);
 static const xd_builtin_mapping_t xd_builtins[] = {
     {"jobs", xd_jobs},
     {"kill", xd_kill},
+    {"fg",   xd_fg  },
 };
 
 /**
@@ -305,6 +310,132 @@ static int xd_kill(int argc, char **argv) {
 
   return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
 }  // xd_kill()
+
+/**
+ * @brief Prints usage information for the `fg` builtin.
+ */
+static void xd_fg_usage() {
+  fprintf(stderr, "fg: usage: fg [job_spec]\n");
+}  // xd_fg_usage()
+
+/**
+ * @brief Prints detailed help information for the `fg` builtin.
+ */
+static void xd_fg_help() {
+  printf(
+      "fg: fg [job_spec]\n"
+      "    Move job to the foreground.\n"
+      "\n"
+      "    Place the job identified by job_spec in foreground, making it the\n"
+      "    current job. If job_spec is not present, the shell's notion of the\n"
+      "    current job is used.\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Status of command placed in foreground unless an error occurs.\n");
+}  // xd_fg_help()
+
+/**
+ * @brief Executor of `fg` builtin command.
+ */
+static int xd_fg(int argc, char **argv) {
+  if (!xd_sh_is_interactive || !isatty(STDIN_FILENO) || getpid() != xd_sh_pid) {
+    fprintf(stderr, "xd-shell: fg: no job control\n");
+    return EXIT_FAILURE;
+  }
+
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_fg_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  if (argc > 2) {
+    fprintf(stderr, "xd-shell: fg: too many arguments\n");
+    xd_fg_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  int opt;
+  while ((opt = getopt(argc, argv, "")) != -1) {
+    switch (opt) {
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: fg: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_fg_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  // get the target job
+  const char *operand = (argc > 1) ? argv[1] : NULL;
+  xd_job_t *job = NULL;
+
+  if (operand == NULL) {
+    job = xd_jobs_get_current();
+  }
+  else if (*operand == '%') {
+    if (strcmp(operand, "%%") == 0 || strcmp(operand, "%+") == 0) {
+      job = xd_jobs_get_current();
+    }
+    else if (strcmp(operand, "%-") == 0) {
+      job = xd_jobs_get_previous();
+    }
+    else {
+      long job_id = -1;
+      xd_utils_strtol(operand + 1, &job_id);
+      job = xd_jobs_get_with_id((int)job_id);
+    }
+  }
+
+  if (job == NULL) {
+    fprintf(stderr, "xd-shell: fg: %s: no such job\n",
+            operand == NULL ? "current" : operand);
+    return EXIT_FAILURE;
+  }
+
+  xd_job_print_string(job);
+
+  if (xd_jobs_put_in_foreground(job->pgid) == -1) {
+    return EXIT_FAILURE;
+  }
+  while (job->has_tty_modes &&
+         tcsetattr(STDIN_FILENO, TCSADRAIN, &job->tty_modes) == -1) {
+    if (errno == EINTR) {
+      continue;
+    }
+    break;
+  }
+
+  if (kill(-job->pgid, SIGCONT) == -1) {
+    xd_jobs_put_in_foreground(xd_sh_pgid);
+    fprintf(stderr, "xd-shell: fg: %s: %s\n",
+            operand == NULL ? "current" : operand, strerror(errno));
+    return EXIT_FAILURE;
+  }
+  xd_jobs_wait_non_blocking(job);
+
+  int exit_status = xd_jobs_wait(job);
+
+  xd_jobs_put_in_foreground(xd_sh_pgid);
+
+  if (xd_job_is_alive(job)) {
+    job->notify = 1;
+    if (tcgetattr(STDIN_FILENO, &job->tty_modes) == 0) {
+      job->has_tty_modes = 1;
+    }
+  }
+
+  while (tcsetattr(STDIN_FILENO, TCSADRAIN, &xd_sh_tty_modes) == -1) {
+    if (errno == EINTR) {
+      continue;
+    }
+    break;
+  }
+
+  return exit_status;
+}  // xd_fg()
 
 // ========================
 // Public Functions

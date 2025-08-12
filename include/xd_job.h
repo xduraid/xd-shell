@@ -18,6 +18,7 @@
 
 #include <inttypes.h>
 #include <sys/types.h>
+#include <termios.h>
 
 #include "xd_command.h"
 
@@ -29,16 +30,18 @@
  * @brief Represents a shell job (pipeline of commands).
  */
 typedef struct xd_job_t {
-  xd_command_t **commands;  // Array of commands in the job
-  int command_count;        // Number of commands in the job
-  int is_background;        // Whether to run as a background process
-  pid_t pgid;               // PGID of the processes executing the job
-  int unreaped_count;       // Number of unreaped child processes
-  int stopped_count;        // Number of stopped child processes
-  int wait_status;          // Last wait status of children
-  int job_id;               // Id of the job (in jobs list)
-  uint64_t last_active;     // Last time job recived a signal
-  int notify;               // Whether to notify the status change
+  xd_command_t **commands;   // Array of commands in the job
+  int command_count;         // Number of commands in the job
+  int is_background;         // Whether to run as a background process
+  pid_t pgid;                // PGID of the processes executing the job
+  int unreaped_count;        // Number of unreaped child processes
+  int stopped_count;         // Number of stopped child processes
+  int wait_status;           // Last wait status of children
+  int job_id;                // Id of the job (in jobs list)
+  uint64_t last_active;      // Last time job recived a signal
+  int notify;                // Whether to notify the status change
+  struct termios tty_modes;  // tty modes for the job
+  int has_tty_modes;         // Whether tty modes were stored in `tty_modes`
 } xd_job_t;
 
 // ========================
@@ -110,6 +113,13 @@ int xd_job_is_stopped(const xd_job_t *job);
  * @return `1` if the passed job is alive, `0` otherwise.
  */
 int xd_job_is_alive(const xd_job_t *job);
+
+/**
+ * @brief Prints the string used to executed the passed job.
+ *
+ * @param job A pointer to the `xd_job_t` structure to print its string.
+ */
+void xd_job_print_string(xd_job_t *job);
 
 /**
  * @brief Prints the status line of the passed `xd_job_t` structure.

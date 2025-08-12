@@ -22,6 +22,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <termios.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -60,6 +61,7 @@ pid_t xd_sh_pid = 0;
 pid_t xd_sh_pgid = 0;
 volatile sig_atomic_t xd_sh_readline_running = 0;
 int xd_sh_last_exit_code = 0;
+struct termios xd_sh_tty_modes = {0};
 
 // ========================
 // Function Definitions
@@ -100,6 +102,11 @@ static void xd_sh_init() {
     }
 
     strncpy(xd_sh_prompt, "\e[0;94mxd-shell\e[0m$ ", XD_SH_PROMPT_MAX_LENGTH);
+
+    if (tcgetattr(STDIN_FILENO, &xd_sh_tty_modes) == -1) {
+      fprintf(stderr, "xd_readline: failed to get tty attributes\n");
+      exit(EXIT_FAILURE);
+    }
   }
 
   xd_sh_pid = pid;
