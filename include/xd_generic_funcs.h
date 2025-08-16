@@ -61,4 +61,19 @@ typedef void (*xd_gens_destroy_func_t)(void *);
  */
 typedef int (*xd_gens_comp_func_t)(const void *, const void *);
 
+/**
+ * @brief Function pointer type for computing a hash value of a generic data
+ * element.
+ *
+ * @param data A pointer to the data element to hash.
+ *
+ * @return An unsigned integer representing the hash value of the input data.
+ *
+ * @note The implementation must handle cases where the argument is `NULL`,
+ * if such cases are expected in the context where the hash function is used.
+ * The behavior (e.g., returning a fixed sentinel value like 0) must be
+ * well-defined and consistent with how the structure uses the hash function.
+ */
+typedef unsigned int (*xd_gens_hash_func_t)(void *);
+
 #endif  // XD_GENERIC_FUNCS
