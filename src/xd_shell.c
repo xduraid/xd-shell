@@ -26,6 +26,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "xd_aliases.h"
 #include "xd_command.h"
 #include "xd_job.h"
 #include "xd_jobs.h"
@@ -112,6 +113,7 @@ static void xd_sh_init() {
   xd_sh_pid = pid;
   xd_sh_pgid = pgid;
   xd_jobs_init();
+  xd_aliases_init();
 }  // xd_sh_init()
 
 /**
@@ -121,6 +123,7 @@ static void xd_sh_destroy() {
   yylex_destroy();
   yyparse_cleanup();
   xd_jobs_destroy();
+  xd_aliases_destroy();
 }  // xd_sh_destroy()
 
 /**

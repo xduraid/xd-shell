@@ -23,6 +23,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "xd_aliases.h"
 #include "xd_jobs.h"
 #include "xd_shell.h"
 #include "xd_signals.h"
@@ -65,6 +66,10 @@ static void xd_bg_usage();
 static void xd_bg_help();
 static int xd_bg(int argc, char **argv);
 
+static void xd_alias_usage();
+static void xd_alias_help();
+static int xd_alias(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -73,10 +78,11 @@ static int xd_bg(int argc, char **argv);
  * @brief Array of defined builtins.
  */
 static const xd_builtin_mapping_t xd_builtins[] = {
-    {"jobs", xd_jobs},
-    {"kill", xd_kill},
-    {"fg",   xd_fg  },
-    {"bg",   xd_bg  },
+    {"jobs",  xd_jobs },
+    {"kill",  xd_kill },
+    {"fg",    xd_fg   },
+    {"bg",    xd_bg   },
+    {"alias", xd_alias},
 };
 
 /**
@@ -544,6 +550,88 @@ static int xd_bg(int argc, char **argv) {
 
   return success_count == argc - 1 ? EXIT_SUCCESS : EXIT_FAILURE;
 }  // xd_bg()
+
+/**
+ * @brief Prints usage information for the `alias` builtin.
+ */
+static void xd_alias_usage() {
+  fprintf(stderr, "alias: usage: alias [name[=value] ... ]\n");
+}  // xd_alias_usage()
+
+/**
+ * @brief Prints detailed help information for the `alias` builtin.
+ */
+static void xd_alias_help() {
+  printf(
+      "alias: alias [name[=value] ... ]\n"
+      "    Define or display aliases.\n"
+      "\n"
+      "    Without arguments, it prints the list of aliases in the reusable\n"
+      "    form `alias name=value` to standard output\n"
+      "    Otherwise, an alias is defined for each name whose value is given.\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_alias_help()
+
+/**
+ * @brief Executor of `alias` builtin command.
+ */
+static int xd_alias(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_alias_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int opt;
+  while ((opt = getopt(argc, argv, "")) != -1) {
+    switch (opt) {
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: alias: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_alias_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  if (argc == 1) {
+    xd_aliases_print_all();
+    return EXIT_SUCCESS;
+  }
+
+  int success_count = 0;
+  for (int i = 1; i < argc; i++) {
+    char *name = argv[i];
+    char *value = NULL;
+    char *equal = strchr(name, '=');
+    if (equal == NULL) {
+      value = xd_aliases_get(name);
+      if (value == NULL) {
+        fprintf(stderr, "xd-shell: alias: %s: not found\n", name);
+        continue;
+      }
+      printf("alias %s='%s'\n", name, value);
+      success_count++;
+      continue;
+    }
+
+    *equal = '\0';
+    value = equal + 1;
+
+    if (!xd_aliases_is_valid_name(name)) {
+      fprintf(stderr, "xd-shell: alias: %s: invalid alias name\n", name);
+      continue;
+    }
+
+    xd_aliases_put(name, value);
+    success_count++;
+  }
+
+  return success_count == argc - 1 ? EXIT_SUCCESS : EXIT_FAILURE;
+}  // xd_alias()
 
 // ========================
 // Public Functions

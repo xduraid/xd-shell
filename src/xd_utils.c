@@ -15,7 +15,9 @@
 
 #include "xd_utils.h"
 
+#include <ctype.h>
 #include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -27,6 +29,16 @@
  * @brief Base used in `strtol()`.
  */
 #define XD_UTILS_STRTOL_BASE (10)
+
+/**
+ * @brief Initial value for djb2 string hash.
+ */
+#define XD_UTILS_DJB2_INITIAL (5381)
+
+/**
+ * @brief Multiplier used in djb2 string hash.
+ */
+#define XD_UTILS_DJB2_MULTIPLIER (5)
 
 // ========================
 // Function Declarations
@@ -76,3 +88,46 @@ int xd_utils_strtol(const char *str, long *out) {
   errno = saved_errno;
   return ret;
 }  // xd_utils_strtol()
+
+void *xd_utils_str_copy_func(void *data) {
+  if (data == NULL) {
+    return NULL;
+  }
+  char *copy = strdup(data);
+  if (copy == NULL) {
+    fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+            strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+  return copy;
+}  // xd_utils_str_copy_func()
+
+void xd_utils_str_destroy_func(void *data) {
+  free(data);
+}  // xd_utils_str_destroy_func()
+
+int xd_utils_str_comp_func(const void *data1, const void *data2) {
+  if (data1 == NULL && data2 == NULL) {
+    return 0;
+  }
+  if (data1 == NULL) {
+    return -1;
+  }
+  if (data2 == NULL) {
+    return 1;
+  }
+  return strcmp(data1, data2);
+}  // xd_utils_str_comp_func()
+
+unsigned int xd_utils_str_hash_func(void *data) {
+  if (data == NULL) {
+    return 0;
+  }
+  char *str = data;
+  unsigned int hash = XD_UTILS_DJB2_INITIAL;
+  int chr;
+  while ((chr = (unsigned char)*str++)) {
+    hash = ((hash << XD_UTILS_DJB2_MULTIPLIER) + hash) + chr;
+  }
+  return hash;
+}  // xd_utils_str_hash_func()
