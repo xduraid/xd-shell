@@ -27,6 +27,15 @@ void xd_aliases_init();
 void xd_aliases_destroy();
 
 /**
+ * @brief Clears the aliases hash map, removing all defined aliases and
+ * resetting it to its initial new state.
+ *
+ * @warning This function may call `exit(EXIT_FAILURE)` if memory allocation
+ * fails when rehashing the aliases map.
+ */
+void xd_aliases_clear();
+
+/**
  * @brief Retrieves the value of an alias by its name.
  *
  * @param name Pointer to the null-terminated string representing the alias

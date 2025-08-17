@@ -61,6 +61,10 @@ void xd_aliases_destroy() {
   xd_map_destroy(xd_aliases);
 }  // xd_aliases_destroy()
 
+void xd_aliases_clear() {
+  xd_map_clear(xd_aliases);
+}  // xd_aliases_clear()
+
 char *xd_aliases_get(char *name) {
   return xd_map_get(xd_aliases, name);
 }  // xd_aliases_get()

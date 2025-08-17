@@ -70,6 +70,10 @@ static void xd_alias_usage();
 static void xd_alias_help();
 static int xd_alias(int argc, char **argv);
 
+static void xd_unalias_usage();
+static void xd_unalias_help();
+static int xd_unalias(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -78,11 +82,12 @@ static int xd_alias(int argc, char **argv);
  * @brief Array of defined builtins.
  */
 static const xd_builtin_mapping_t xd_builtins[] = {
-    {"jobs",  xd_jobs },
-    {"kill",  xd_kill },
-    {"fg",    xd_fg   },
-    {"bg",    xd_bg   },
-    {"alias", xd_alias},
+    {"jobs",    xd_jobs   },
+    {"kill",    xd_kill   },
+    {"fg",      xd_fg     },
+    {"bg",      xd_bg     },
+    {"alias",   xd_alias  },
+    {"unalias", xd_unalias},
 };
 
 /**
@@ -632,6 +637,85 @@ static int xd_alias(int argc, char **argv) {
 
   return success_count == argc - 1 ? EXIT_SUCCESS : EXIT_FAILURE;
 }  // xd_alias()
+
+/**
+ * @brief Prints usage information for the `unalias` builtin.
+ */
+static void xd_unalias_usage() {
+  fprintf(stderr, "unalias: usage: unalias [-a] name [name ...]\n");
+}  // xd_unalias_usage()
+
+/**
+ * @brief Prints detailed help information for the `unalias` builtin.
+ */
+static void xd_unalias_help() {
+  printf(
+      "unalias: unalias [-a] name [name ...]\n"
+      "    Remove each name from the list of defined aliases.\n"
+      "\n"
+      "    Options:\n"
+      "      -a        remove all alias definitions\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_unalias_help()
+
+/**
+ * @brief Executor of `unalias` builtin command.
+ */
+static int xd_unalias(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_unalias_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int clear_all = 0;
+  int opt;
+  while ((opt = getopt(argc, argv, "a")) != -1) {
+    switch (opt) {
+      case 'a':
+        clear_all = 1;
+        break;
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: unalias: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_unalias_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  if (argc == 1) {
+    xd_unalias_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  if (clear_all) {
+    xd_aliases_clear();
+    return EXIT_SUCCESS;
+  }
+
+  int operand_count = argc - optind;
+  int success_count = 0;
+  for (int i = optind; i < argc; i++) {
+    char *name = argv[i];
+
+    if (!xd_aliases_is_valid_name(name)) {
+      fprintf(stderr, "xd-shell: unalias: %s: invalid alias name\n", name);
+      continue;
+    }
+
+    if (xd_aliases_remove(name) == -1) {
+      fprintf(stderr, "xd-shell: unalias: %s: not found\n", name);
+      continue;
+    }
+    success_count++;
+  }
+
+  return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
+}  // xd_unalias()
 
 // ========================
 // Public Functions
