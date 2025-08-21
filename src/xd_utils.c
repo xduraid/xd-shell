@@ -131,3 +131,13 @@ unsigned int xd_utils_str_hash_func(void *data) {
   }
   return hash;
 }  // xd_utils_str_hash_func()
+
+char *xd_utils_strdup(char *str) {
+  char *copy = strdup(str);
+  if (copy == NULL) {
+    fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+            strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+  return copy;
+}  // xd_utils_strdup()

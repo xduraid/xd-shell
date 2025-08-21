@@ -48,11 +48,6 @@ extern int yylex();
 extern char *yytext;
 
 /**
- * @brief Current command being parsed.
- */
-static xd_command_t *xd_current_command = NULL;
-
-/**
  * @brief Current job being parsed.
  */
 static xd_job_t *xd_current_job = NULL;
@@ -75,6 +70,11 @@ static int xd_command_buffer_capacity = 0;
 // ========================
 // Public Variables
 // ========================
+
+/**
+ * @brief Current command being parsed.
+ */
+xd_command_t *xd_current_command = NULL;
 
 // ========================
 // Function Definitions

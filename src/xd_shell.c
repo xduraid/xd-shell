@@ -44,6 +44,8 @@ static int xd_sh_run();
 
 // flex and bison functions
 
+extern void yylex_init();
+extern void yylex_cleanup();
 extern int yylex_destroy();
 extern int yyparse();
 extern void yyparse_cleanup();
@@ -114,12 +116,14 @@ static void xd_sh_init() {
   xd_sh_pgid = pgid;
   xd_jobs_init();
   xd_aliases_init();
+  yylex_init();
 }  // xd_sh_init()
 
 /**
  * @brief Destructor, runs before exit to cleanup after the shell.
  */
 static void xd_sh_destroy() {
+  yylex_cleanup();
   yylex_destroy();
   yyparse_cleanup();
   xd_jobs_destroy();

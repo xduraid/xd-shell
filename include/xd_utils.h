@@ -79,4 +79,16 @@ int xd_utils_str_comp_func(const void *data1, const void *data2);
  */
 unsigned int xd_utils_str_hash_func(void *data);
 
+/**
+ * @brief Wrapper for `strdup()` with error handling, it copies the string and
+ * returns a pointer to the copy.
+ *
+ * @param str Pointer to the string to be copied.
+ *
+ * @return A pointer to the copied string.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+char *xd_utils_strdup(char *str);
+
 #endif  // XD_UTILS_H
