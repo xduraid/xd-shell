@@ -23,6 +23,7 @@
 #include "xd_command.h"
 #include "xd_job.h"
 #include "xd_jobs.h"
+#include "xd_utils.h"
 
 // ========================
 // Macros
@@ -80,6 +81,13 @@ xd_command_t *xd_current_command = NULL;
 // Function Definitions
 // ========================
 
+/**
+ * @brief Adds the passed string to the end of the command buffer.
+ *
+ * @param str The string to be added.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
 static void xd_command_buffer_append_str(const char *str) {
   int str_len = (int)strlen(str);
 
@@ -106,6 +114,9 @@ static void xd_command_buffer_append_str(const char *str) {
   xd_command_buffer[xd_command_buffer_length] = '\0';
 }  // xd_command_buffer_append_str()
 
+/**
+ * @brief Resets the command buffer to its initial empty state.
+ */
 static void xd_command_buffer_reset() {
   if (xd_command_buffer == NULL) {
     return;
@@ -224,13 +235,7 @@ command_list:
 
 command:
     executable argument_list io_redirection_list {
-      xd_current_command->str = strdup(xd_command_buffer);
-      if (xd_current_command->str == NULL) {
-        fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
-            strerror(errno));
-        exit(EXIT_FAILURE);
-      }
-
+      xd_current_command->str = xd_utils_strdup(xd_command_buffer);
       xd_job_add_command(xd_current_job, xd_current_command);
       xd_current_command = NULL;
     }
@@ -335,13 +340,8 @@ io_redirection:
       if (xd_current_command->error_file != NULL) {
         free(xd_current_command->error_file);
       }
-      xd_current_command->error_file = strdup($2);
+      xd_current_command->error_file = xd_utils_strdup($2);
       xd_current_command->append_error = 0;
-      if (xd_current_command->error_file == NULL) {
-        fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
-            strerror(errno));
-        exit(EXIT_FAILURE);
-      }
     }
   | GT_GT_AMPERSAND ARG {
       // output and error redirection
@@ -357,13 +357,8 @@ io_redirection:
       if (xd_current_command->error_file != NULL) {
         free(xd_current_command->error_file);
       }
-      xd_current_command->error_file = strdup($2);
+      xd_current_command->error_file = xd_utils_strdup($2);
       xd_current_command->append_error = 1;
-      if (xd_current_command->error_file == NULL) {
-        fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
-            strerror(errno));
-        exit(EXIT_FAILURE);
-      }
     }
   ;
 
