@@ -193,6 +193,10 @@ void yylex_cleanup() {
 
 %%
 
+"#".* {
+  // ignore comments
+}
+
 "<" {
   return LT;
 }
