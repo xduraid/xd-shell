@@ -28,6 +28,7 @@
 #include "xd_shell.h"
 #include "xd_signals.h"
 #include "xd_utils.h"
+#include "xd_vars.h"
 
 // ========================
 // Typedefs
@@ -74,6 +75,10 @@ static void xd_unalias_usage();
 static void xd_unalias_help();
 static int xd_unalias(int argc, char **argv);
 
+static void xd_set_usage();
+static void xd_set_help();
+static int xd_set(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -88,6 +93,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"bg",      xd_bg     },
     {"alias",   xd_alias  },
     {"unalias", xd_unalias},
+    {"set",     xd_set    },
 };
 
 /**
@@ -716,6 +722,90 @@ static int xd_unalias(int argc, char **argv) {
 
   return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
 }  // xd_unalias()
+
+/**
+ * @brief Prints usage information for the `set` builtin.
+ */
+static void xd_set_usage() {
+  fprintf(stderr, "set: usage: set [name[=value] ... ]\n");
+}  // xd_set_usage()
+
+/**
+ * @brief Prints detailed help information for the `set` builtin.
+ */
+static void xd_set_help() {
+  printf(
+      "set: set [name[=value] ... ]\n"
+      "    Define or display variables.\n"
+      "\n"
+      "    Without arguments, it prints the list of variables in the reusable\n"
+      "    form `set name=value` to standard output\n"
+      "    Otherwise, a variable is defined for each name whose value is "
+      "given.\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_set_help()
+
+/**
+ * @brief Executor of `set` builtin command.
+ */
+static int xd_set(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_set_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int opt;
+  while ((opt = getopt(argc, argv, "")) != -1) {
+    switch (opt) {
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: set: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_set_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  if (argc == 1) {
+    xd_vars_print_all();
+    return EXIT_SUCCESS;
+  }
+
+  int success_count = 0;
+  for (int i = 1; i < argc; i++) {
+    char *name = argv[i];
+    char *value = NULL;
+    char *equal = strchr(name, '=');
+    if (equal == NULL) {
+      value = xd_vars_get(name);
+      if (value == NULL) {
+        fprintf(stderr, "xd-shell: set: %s: not found\n", name);
+        continue;
+      }
+      printf("set %s='%s'\n", name, value);
+      success_count++;
+      continue;
+    }
+
+    *equal = '\0';
+    value = equal + 1;
+
+    if (!xd_vars_is_valid_name(name)) {
+      fprintf(stderr, "xd-shell: set: %s: invalid variable name\n", name);
+      continue;
+    }
+
+    int is_exported = xd_vars_is_exported(name);
+    xd_vars_put(name, value, is_exported);
+    success_count++;
+  }
+
+  return success_count == argc - 1 ? EXIT_SUCCESS : EXIT_FAILURE;
+}  // xd_set()
 
 // ========================
 // Public Functions

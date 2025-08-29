@@ -30,6 +30,7 @@
 #include "xd_command.h"
 #include "xd_job.h"
 #include "xd_jobs.h"
+#include "xd_vars.h"
 
 // ========================
 // Function Declarations
@@ -116,6 +117,7 @@ static void xd_sh_init() {
   xd_sh_pgid = pgid;
   xd_jobs_init();
   xd_aliases_init();
+  xd_vars_init();
   yylex_init();
 }  // xd_sh_init()
 
@@ -128,6 +130,7 @@ static void xd_sh_destroy() {
   yyparse_cleanup();
   xd_jobs_destroy();
   xd_aliases_destroy();
+  xd_vars_destroy();
 }  // xd_sh_destroy()
 
 /**
