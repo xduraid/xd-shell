@@ -83,6 +83,10 @@ static void xd_unset_usage();
 static void xd_unset_help();
 static int xd_unset(int argc, char **argv);
 
+static void xd_export_usage();
+static void xd_export_help();
+static int xd_export(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -99,6 +103,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"unalias", xd_unalias},
     {"set",     xd_set    },
     {"unset",   xd_unset  },
+    {"export",  xd_export },
 };
 
 /**
@@ -880,6 +885,99 @@ static int xd_unset(int argc, char **argv) {
 
   return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
 }  // xd_unset()
+
+/**
+ * @brief Prints usage information for the `export` builtin.
+ */
+static void xd_export_usage() {
+  fprintf(stderr, "export: usage: export [-p] [name[=value] ... ]\n");
+}  // xd_export_usage()
+
+/**
+ * @brief Prints detailed help information for the `export` builtin.
+ */
+static void xd_export_help() {
+  printf(
+      "export: export [-p] [name[=value] ... ]\n"
+      "    Mark variables for export to the environment.\n"
+      "\n"
+      "    For each name without a value, mark the existing variable for\n"
+      "    export. For each name with a =value, set the variable to value\n"
+      "    and mark it for export so it is available to child processes.\n"
+      "\n"
+      "    Without arguments, behaves like -p and prints the list of exported\n"
+      "    variables in the reusable form `export name='value'`.\n"
+      "\n"
+      "    Options:\n"
+      "      -p        print exported variables in reusable form\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_export_help()
+
+/**
+ * @brief Executor of `export` builtin command.
+ */
+static int xd_export(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_export_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int print_exports = 0;
+  int opt;
+  while ((opt = getopt(argc, argv, "+p")) != -1) {
+    switch (opt) {
+      case 'p':
+        print_exports = 1;
+        break;
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: export: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_export_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  if (argc == 1 || print_exports) {
+    xd_vars_print_all_exported();
+    return EXIT_SUCCESS;
+  }
+
+  int operand_count = argc - optind;
+  int success_count = 0;
+  for (int i = optind; i < argc; i++) {
+    char *name = argv[i];
+    char *value = NULL;
+
+    char *equal = strchr(name, '=');
+    if (equal != NULL) {
+      *equal = '\0';
+      value = equal + 1;
+    }
+
+    if (!xd_vars_is_valid_name(name)) {
+      fprintf(stderr, "xd-shell: export: %s: invalid variable name\n", name);
+      continue;
+    }
+
+    if (value == NULL) {
+      value = xd_vars_get(name);
+      if (value == NULL) {
+        fprintf(stderr, "xd-shell: export: %s: not found\n", name);
+        continue;
+      }
+    }
+
+    xd_vars_put(name, value, 1);
+    success_count++;
+  }
+
+  return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
+}  // xd_export()
 
 // ========================
 // Public Functions

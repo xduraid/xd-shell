@@ -198,6 +198,23 @@ void xd_vars_print_all() {
   }
 }  // xd_vars_print_all()
 
+void xd_vars_print_all_exported() {
+  if (xd_vars == NULL) {
+    return;
+  }
+  for (int i = 0; i < xd_vars->bucket_count; i++) {
+    xd_list_t *bucket = xd_vars->buckets[i];
+    for (xd_list_node_t *node = bucket->head; node != NULL; node = node->next) {
+      xd_bucket_entry_t *entry = node->data;
+      char *name = entry->key;
+      xd_var_t *var = entry->value;
+      if (var->is_exported) {
+        printf("export %s='%s'\n", name, var->value);
+      }
+    }
+  }
+}  // xd_vars_print_all_exported()
+
 int xd_vars_is_valid_name(const char *name) {
   if (name == NULL || *name == '\0') {
     return 0;

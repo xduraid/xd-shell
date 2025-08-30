@@ -81,9 +81,16 @@ int xd_vars_remove(char *name);
 int xd_vars_is_exported(char *name);
 
 /**
- * @brief Prints all variables to stdout.
+ * @brief Prints all variables to stdout in the reusable form
+ * `set name=value`.
  */
 void xd_vars_print_all();
+
+/**
+ * @brief Prints all exported variables to stdout in the reusable form
+ * `export name=value`.
+ */
+void xd_vars_print_all_exported();
 
 /**
  * @brief Checks if the passed string is a valid variable name.
