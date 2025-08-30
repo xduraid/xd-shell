@@ -87,6 +87,10 @@ static void xd_export_usage();
 static void xd_export_help();
 static int xd_export(int argc, char **argv);
 
+static void xd_unexport_usage();
+static void xd_unexport_help();
+static int xd_unexport(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -95,15 +99,16 @@ static int xd_export(int argc, char **argv);
  * @brief Array of defined builtins.
  */
 static const xd_builtin_mapping_t xd_builtins[] = {
-    {"jobs",    xd_jobs   },
-    {"kill",    xd_kill   },
-    {"fg",      xd_fg     },
-    {"bg",      xd_bg     },
-    {"alias",   xd_alias  },
-    {"unalias", xd_unalias},
-    {"set",     xd_set    },
-    {"unset",   xd_unset  },
-    {"export",  xd_export },
+    {"jobs",     xd_jobs    },
+    {"kill",     xd_kill    },
+    {"fg",       xd_fg      },
+    {"bg",       xd_bg      },
+    {"alias",    xd_alias   },
+    {"unalias",  xd_unalias },
+    {"set",      xd_set     },
+    {"unset",    xd_unset   },
+    {"export",   xd_export  },
+    {"unexport", xd_unexport},
 };
 
 /**
@@ -978,6 +983,79 @@ static int xd_export(int argc, char **argv) {
 
   return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
 }  // xd_export()
+
+/**
+ * @brief Prints usage information for the `unexport` builtin.
+ */
+static void xd_unexport_usage() {
+  fprintf(stderr, "unexport: usage: unexport name [name ...]\n");
+}  // xd_unexport_usage()
+
+/**
+ * @brief Prints detailed help information for the `unexport` builtin.
+ */
+static void xd_unexport_help() {
+  printf(
+      "unexport: unexport name [name ...]\n"
+      "    Mark variables as not exported.\n"
+      "\n"
+      "    For each name, mark the existing variable as not exported so it\n"
+      "    is not passed to child processes.\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_unexport_help()
+
+/**
+ * @brief Executor of `unexport` builtin command.
+ */
+static int xd_unexport(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_unexport_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int opt;
+  while ((opt = getopt(argc, argv, "")) != -1) {
+    switch (opt) {
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: unexport: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_unexport_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  if (argc == 1) {
+    xd_unexport_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  int operand_count = argc - 1;
+  int success_count = 0;
+  for (int i = 1; i < argc; i++) {
+    char *name = argv[i];
+
+    if (!xd_vars_is_valid_name(name)) {
+      fprintf(stderr, "xd-shell: unexport: %s: invalid variable name\n", name);
+      continue;
+    }
+
+    char *value = xd_vars_get(name);
+    if (value == NULL) {
+      fprintf(stderr, "xd-shell: unexport: %s: not found\n", name);
+      continue;
+    }
+
+    xd_vars_put(name, value, 0);
+    success_count++;
+  }
+
+  return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
+}  // xd_unexport()
 
 // ========================
 // Public Functions
