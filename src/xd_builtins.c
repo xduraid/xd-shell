@@ -79,6 +79,10 @@ static void xd_set_usage();
 static void xd_set_help();
 static int xd_set(int argc, char **argv);
 
+static void xd_unset_usage();
+static void xd_unset_help();
+static int xd_unset(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -94,6 +98,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"alias",   xd_alias  },
     {"unalias", xd_unalias},
     {"set",     xd_set    },
+    {"unset",   xd_unset  },
 };
 
 /**
@@ -806,6 +811,75 @@ static int xd_set(int argc, char **argv) {
 
   return success_count == argc - 1 ? EXIT_SUCCESS : EXIT_FAILURE;
 }  // xd_set()
+
+/**
+ * @brief Prints usage information for the `unset` builtin.
+ */
+static void xd_unset_usage() {
+  fprintf(stderr, "unset: usage: unset name [name ...]\n");
+}  // xd_unset_usage()
+
+/**
+ * @brief Prints detailed help information for the `unset` builtin.
+ */
+static void xd_unset_help() {
+  printf(
+      "unset: unset name [name ...]\n"
+      "    Undefine variables.\n"
+      "\n"
+      "    For each name, undefined the corresponding variable.\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_unset_help()
+
+/**
+ * @brief Executor of `unset` builtin command.
+ */
+static int xd_unset(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_unset_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int opt;
+  while ((opt = getopt(argc, argv, "")) != -1) {
+    switch (opt) {
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: unset: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_unset_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  if (argc == 1) {
+    xd_unset_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  int operand_count = argc - 1;
+  int success_count = 0;
+  for (int i = 1; i < argc; i++) {
+    char *name = argv[i];
+
+    if (!xd_vars_is_valid_name(name)) {
+      fprintf(stderr, "xd-shell: unset: %s: invalid variable name\n", name);
+      continue;
+    }
+
+    if (xd_vars_remove(name) == -1) {
+      fprintf(stderr, "xd-shell: unset: %s: not found\n", name);
+      continue;
+    }
+    success_count++;
+  }
+
+  return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
+}  // xd_unset()
 
 // ========================
 // Public Functions
