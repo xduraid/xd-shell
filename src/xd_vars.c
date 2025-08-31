@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "xd_list.h"
 #include "xd_map.h"
@@ -58,6 +59,11 @@ static int xd_var_comp_func(const void *data1, const void *data2);
  * @brief Shell variables hash map.
  */
 static xd_map_t *xd_vars = NULL;
+
+/**
+ * @brief Process environment array.
+ */
+extern char **environ;
 
 // ========================
 // Function Definitions
@@ -154,7 +160,45 @@ void xd_vars_init() {
                           xd_utils_str_comp_func, xd_var_copy_func,
                           xd_var_destroy_func, xd_var_comp_func,
                           xd_utils_str_hash_func);
+
   // load environment variables
+  if (environ != NULL) {
+    for (char **env = environ; *env != NULL; env++) {
+      char *entry = *env;
+      char *equal = strchr(entry, '=');
+      if (equal == NULL || equal == entry) {
+        continue;  // skip invalid entries
+      }
+
+      size_t name_len = (size_t)(equal - entry);
+      char *name = (char *)malloc(sizeof(char) * (name_len + 1));
+      if (name == NULL) {
+        fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+                strerror(errno));
+        exit(EXIT_FAILURE);
+      }
+      memcpy(name, entry, name_len);
+      name[name_len] = '\0';
+
+      if (!xd_vars_is_valid_name(name)) {
+        free(name);
+        continue;
+      }
+
+      char *value = strdup(equal + 1);
+      if (value == NULL) {
+        fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+                strerror(errno));
+        exit(EXIT_FAILURE);
+      }
+
+      xd_vars_put(name, value, 1);
+
+      // free temporaries
+      free(name);
+      free(value);
+    }
+  }
 }  // xd_vars_init()
 
 void xd_vars_destroy() {

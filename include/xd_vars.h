@@ -14,7 +14,7 @@
  */
 
 /**
- * @brief Initializes the variables hash map.
+ * @brief Initializes the variables hash map and loads the environment.
  *
  * @warning This function may call `exit(EXIT_FAILURE)` if memory allocation
  * fails.
