@@ -93,6 +93,28 @@ void xd_vars_print_all();
 void xd_vars_print_all_exported();
 
 /**
+ * @brief Constructs a null-terminated array of environment variables and
+ * returns it.
+ *
+ * @return A newly allocated null-terminated array of string pointers containing
+ * all defined environment variables.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_vars_destroy_envp()` and passing it the returned pointer.
+ */
+char **xd_vars_create_envp();
+
+/**
+ * @brief Frees an environment array created by `xd_vars_get_env()`.
+ *
+ * @param envp The null-terminated array of environment variable strings to be
+ * freed.
+ *
+ * @note If the passed pointer is `NULL`, no action shall occur.
+ */
+void xd_vars_destroy_envp(char **envp);
+
+/**
  * @brief Checks if the passed string is a valid variable name.
  *
  * @param name Pointer to the null-terminated string to be checked.

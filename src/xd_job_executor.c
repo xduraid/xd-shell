@@ -15,6 +15,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -30,6 +31,7 @@
 #include "xd_job.h"
 #include "xd_jobs.h"
 #include "xd_shell.h"
+#include "xd_vars.h"
 
 // ========================
 // Macros
@@ -39,6 +41,11 @@
  * @brief Default access mode for created files.
  */
 #define XD_FILE_ACCESS_MODE (0664)
+
+/**
+ * @brief Fallback path when the environment variable `PATH` isn't defined.
+ */
+#define XD_PATH_DEFAULT "/bin:/usr/bin"
 
 // ========================
 // Function Declarations
@@ -52,6 +59,7 @@ static int xd_redirect_input();
 static int xd_redirect_output();
 static int xd_redirect_error();
 
+static char *xd_path_search(const char *name);
 static void xd_execute_command();
 
 static void xd_execute_builtin_no_fork();
@@ -402,6 +410,87 @@ static int xd_redirect_error() {
 }  // xd_redirect_error()
 
 /**
+ * @brief Search `PATH` for an executable with the passed name.
+ *
+ * @param name The executable name to search for.
+ *
+ * @return A newly allocated string containing the matched path, or `NULL` if
+ * not found or if `name` is invalid.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `free()` and passing it the returned pointer.
+ */
+static char *xd_path_search(const char *name) {
+  if (name == NULL || *name == '\0') {
+    return NULL;
+  }
+  if (strchr(name, '/')) {
+    return NULL;
+  }
+
+  const char *PATH = xd_vars_get("PATH");
+  if (PATH == NULL) {
+    PATH = XD_PATH_DEFAULT;
+  }
+
+  int name_len = (int)strlen(name);
+  const char *cursor = PATH;
+  char path_buffer[PATH_MAX];
+
+  while (1) {
+    const char *colon = strchr(cursor, ':');
+    int segment_len =
+        (colon == NULL) ? (int)strlen(cursor) : (int)(colon - cursor);
+
+    const char *dir_path;
+    int dir_len;
+    if (segment_len == 0) {
+      // empty, used current directory
+      dir_path = ".";
+      dir_len = 1;
+    }
+    else {
+      dir_path = cursor;
+      dir_len = segment_len;
+    }
+
+    int need_slash = (dir_path[dir_len - 1] != '/');
+    int total_len = dir_len + need_slash + name_len;
+
+    if (total_len < PATH_MAX) {
+      memcpy(path_buffer, dir_path, dir_len);
+      if (need_slash) {
+        path_buffer[dir_len] = '/';
+      }
+      memcpy(path_buffer + dir_len + need_slash, name, name_len);
+      path_buffer[total_len] = '\0';
+
+      if (access(path_buffer, X_OK) == 0) {
+        struct stat file_stat;
+        if (stat(path_buffer, &file_stat) == 0 && S_ISREG(file_stat.st_mode)) {
+          char *ret = strdup(path_buffer);
+          if (ret == NULL) {
+            fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+                    strerror(errno));
+            exit(EXIT_FAILURE);
+          }
+          return ret;
+        }
+      }
+    }
+
+    if (colon == NULL) {
+      break;
+    }
+    cursor = colon + 1;
+  }
+
+  return NULL;
+}  // xd_path_search()
+
+/**
  * @brief Executes the current command (`xd_command`).
  */
 static void xd_execute_command() {
@@ -445,32 +534,46 @@ static void xd_execute_command() {
     exit(builtin_exit_code);
   }
 
-  execvp(executable, xd_command->argv);
+  int slash_found = (strchr(executable, '/') != NULL);
+  char *resolved_path = NULL;
+  if (!slash_found) {
+    resolved_path = xd_path_search(executable);
+  }
+
+  char **envp = xd_vars_create_envp();
+
+  const char *exec_path = resolved_path != NULL ? resolved_path : executable;
+  int exec_has_slash = (strchr(exec_path, '/') != NULL);
+  execve(exec_path, xd_command->argv, envp);
 
   // execvp failed
 
   // check if the target is a directory
   struct stat file_stat;
-  int slash_found = strchr(xd_command->argv[0], '/') != NULL;
-  if (slash_found && stat(executable, &file_stat) == 0 &&
-      S_ISDIR(file_stat.st_mode)) {
+  if (stat(exec_path, &file_stat) == 0 && S_ISDIR(file_stat.st_mode)) {
     fprintf(stderr, "xd-shell: %s: Is a directory\n", executable);
+    free(resolved_path);
+    xd_vars_destroy_envp(envp);
     exit(XD_SH_EXIT_CODE_CANNOT_EXECUTE);
   }
 
   // check if not found
   if (errno == ENOENT) {
-    if (!slash_found) {
+    if (!exec_has_slash) {
       fprintf(stderr, "xd-shell: %s: command not found\n", executable);
     }
     else {
       fprintf(stderr, "xd-shell: %s: %s\n", executable, strerror(errno));
     }
+    free(resolved_path);
+    xd_vars_destroy_envp(envp);
     exit(XD_SH_EXIT_CODE_NOT_FOUND);
   }
 
   // cannot be executed
   fprintf(stderr, "xd-shell: %s: %s\n", executable, strerror(errno));
+  free(resolved_path);
+  xd_vars_destroy_envp(envp);
   exit(XD_SH_EXIT_CODE_CANNOT_EXECUTE);
 }  // xd_execute_command()
 

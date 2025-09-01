@@ -259,6 +259,71 @@ void xd_vars_print_all_exported() {
   }
 }  // xd_vars_print_all_exported()
 
+char **xd_vars_create_envp() {
+  int exported_count = 0;
+
+  if (xd_vars != NULL) {
+    for (int i = 0; i < xd_vars->bucket_count; i++) {
+      xd_list_t *bucket = xd_vars->buckets[i];
+      for (xd_list_node_t *node = bucket->head; node != NULL;
+           node = node->next) {
+        xd_bucket_entry_t *entry = node->data;
+        xd_var_t *var = entry->value;
+        if (var->is_exported) {
+          exported_count++;
+        }
+      }
+    }
+  }
+
+  char **env = (char **)malloc(sizeof(char *) * (exported_count + 1));
+  if (env == NULL) {
+    fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+            strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+
+  int idx = 0;
+  if (xd_vars != NULL) {
+    for (int i = 0; i < xd_vars->bucket_count; i++) {
+      xd_list_t *bucket = xd_vars->buckets[i];
+      for (xd_list_node_t *node = bucket->head; node != NULL;
+           node = node->next) {
+        xd_bucket_entry_t *entry = node->data;
+        xd_var_t *var = entry->value;
+        if (var->is_exported) {
+          size_t name_len = strlen(var->name);
+          size_t value_len = strlen(var->value);
+          char *pair =
+              (char *)malloc(sizeof(char) * (name_len + value_len + 2));
+          if (pair == NULL) {
+            fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+                    strerror(errno));
+            exit(EXIT_FAILURE);
+          }
+          memcpy(pair, var->name, name_len);
+          pair[name_len] = '=';
+          memcpy(pair + name_len + 1, var->value, value_len);
+          pair[name_len + value_len + 1] = '\0';
+          env[idx++] = pair;
+        }
+      }
+    }
+  }
+  env[idx] = NULL;
+  return env;
+}  // xd_vars_create_envp()
+
+void xd_vars_destroy_envp(char **envp) {
+  if (envp == NULL) {
+    return;
+  }
+  for (int i = 0; envp[i] != NULL; i++) {
+    free(envp[i]);
+  }
+  free((void *)envp);
+}  // xd_vars_destroy_envp()
+
 int xd_vars_is_valid_name(const char *name) {
   if (name == NULL || *name == '\0') {
     return 0;
