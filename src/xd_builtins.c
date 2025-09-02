@@ -96,6 +96,10 @@ static void xd_cd_usage();
 static void xd_cd_help();
 static int xd_cd(int argc, char **argv);
 
+static void xd_pwd_usage();
+static void xd_pwd_help();
+static int xd_pwd(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -115,6 +119,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"export",   xd_export  },
     {"unexport", xd_unexport},
     {"cd",       xd_cd      },
+    {"pwd",      xd_pwd     },
 };
 
 /**
@@ -1165,6 +1170,64 @@ static int xd_cd(int argc, char **argv) {
 
   return EXIT_SUCCESS;
 }  // xd_cd()
+
+/**
+ * @brief Prints usage information for the `pwd` builtin.
+ */
+static void xd_pwd_usage() {
+  fprintf(stderr, "pwd: usage: pwd\n");
+}  // xd_pwd_usage()
+
+/**
+ * @brief Prints detailed help information for the `pwd` builtin.
+ */
+static void xd_pwd_help() {
+  printf(
+      "pwd: pwd\n"
+      "    Print the path of the current working directory.\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_pwd_help()
+
+/**
+ * @brief Executor of `pwd` builtin command.
+ */
+static int xd_pwd(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_pwd_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int opt;
+  while ((opt = getopt(argc, argv, "")) != -1) {
+    switch (opt) {
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: pwd: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_pwd_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  if (argc > 1) {
+    fprintf(stderr, "xd-shell: pwd: too many arguments\n");
+    xd_pwd_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  char cwd_buf[PATH_MAX];
+  if (getcwd(cwd_buf, PATH_MAX) == NULL) {
+    fprintf(stderr, "xd-shell: pwd: %s\n", strerror(errno));
+    return EXIT_FAILURE;
+  }
+  printf("%s\n", cwd_buf);
+
+  return EXIT_SUCCESS;
+}  // xd_pwd()
 
 // ========================
 // Public Functions
