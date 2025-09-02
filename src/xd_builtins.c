@@ -17,6 +17,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,6 +92,10 @@ static void xd_unexport_usage();
 static void xd_unexport_help();
 static int xd_unexport(int argc, char **argv);
 
+static void xd_cd_usage();
+static void xd_cd_help();
+static int xd_cd(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -109,6 +114,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"unset",    xd_unset   },
     {"export",   xd_export  },
     {"unexport", xd_unexport},
+    {"cd",       xd_cd      },
 };
 
 /**
@@ -1056,6 +1062,109 @@ static int xd_unexport(int argc, char **argv) {
 
   return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
 }  // xd_unexport()
+
+/**
+ * @brief Prints usage information for the `cd` builtin.
+ */
+static void xd_cd_usage() {
+  fprintf(stderr, "cd: usage: cd [dir]\n");
+}  // xd_cd_usage()
+
+/**
+ * @brief Prints detailed help information for the `cd` builtin.
+ */
+static void xd_cd_help() {
+  printf(
+      "cd: cd [dir]\n"
+      "    Change the shell working directory.\n"
+      "\n"
+      "    Change the current directory to dir. The default dir is the value\n"
+      "    of $HOME. If dir is \"-\", it is converted to $OLDPWD.\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_cd_help()
+
+/**
+ * @brief Executor of `cd` builtin command.
+ */
+static int xd_cd(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_cd_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int opt;
+  while ((opt = getopt(argc, argv, "")) != -1) {
+    switch (opt) {
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: cd: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_cd_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  if (argc > 2) {
+    fprintf(stderr, "xd-shell: cd: too many arguments\n");
+    xd_cd_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  char *target = NULL;
+  if (argc == 1) {
+    char *HOME = xd_vars_get("HOME");
+    if (HOME == NULL) {
+      fprintf(stderr, "xd-shell: cd: HOME not set\n");
+      return EXIT_FAILURE;
+    }
+    target = strdup(HOME);
+  }
+  else if (strcmp(argv[1], "-") == 0) {
+    char *OLDPWD = xd_vars_get("OLDPWD");
+    if (OLDPWD == NULL) {
+      fprintf(stderr, "xd-shell: cd: OLDPWD not set\n");
+      return EXIT_FAILURE;
+    }
+    target = strdup(OLDPWD);
+  }
+  else {
+    target = strdup(argv[1]);
+  }
+
+  if (chdir(target) == -1) {
+    fprintf(stderr, "xd-shell: cd: %s: %s\n", target, strerror(errno));
+    free(target);
+    return EXIT_FAILURE;
+  }
+
+  char *prev_pwd = xd_vars_get("PWD");
+  if (prev_pwd != NULL) {
+    xd_vars_put("OLDPWD", prev_pwd, 1);
+  }
+
+  char cwd_buf[PATH_MAX];
+  if (getcwd(cwd_buf, sizeof(cwd_buf)) != NULL) {
+    xd_vars_put("PWD", cwd_buf, 1);
+  }
+  else {
+    xd_vars_put("PWD", target, 1);
+  }
+
+  if (argc > 1 && strcmp(argv[1], "-") == 0) {
+    char *new_pwd = xd_vars_get("PWD");
+    if (new_pwd != NULL) {
+      printf("%s\n", new_pwd);
+    }
+  }
+
+  free(target);
+
+  return EXIT_SUCCESS;
+}  // xd_cd()
 
 // ========================
 // Public Functions
