@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "xd_aliases.h"
 #include "xd_command.h"
@@ -273,6 +274,10 @@ void yylex_cleanup() {
   xd_alias_expansion_stack_pop();
   yypop_buffer_state();
   if (YY_CURRENT_BUFFER == NULL) {
+    if (xd_sh_is_interactive) {
+      printf("exit\n");
+      fflush(stdout);
+    }
     yyterminate();
   }
 }

@@ -32,6 +32,15 @@
 #include "xd_vars.h"
 
 // ========================
+// Macros
+// ========================
+
+/**
+ * @brief Bitmask used to normalize an exit status to the low-order 8 bits.
+ */
+#define XD_EXIT_CODE_MASK (0xff)
+
+// ========================
 // Typedefs
 // ========================
 
@@ -100,6 +109,10 @@ static void xd_pwd_usage();
 static void xd_pwd_help();
 static int xd_pwd(int argc, char **argv);
 
+static void xd_exit_usage();
+static void xd_exit_help();
+static int xd_exit(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -120,6 +133,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"unexport", xd_unexport},
     {"cd",       xd_cd      },
     {"pwd",      xd_pwd     },
+    {"exit",     xd_exit    },
 };
 
 /**
@@ -1228,6 +1242,64 @@ static int xd_pwd(int argc, char **argv) {
 
   return EXIT_SUCCESS;
 }  // xd_pwd()
+
+/**
+ * @brief Prints usage information for the `exit` builtin.
+ */
+static void xd_exit_usage() {
+  fprintf(stderr, "exit: usage: exit [n]\n");
+}  // xd_exit_usage()
+
+/**
+ * @brief Prints detailed help information for the `exit` builtin.
+ */
+static void xd_exit_help() {
+  printf(
+      "exit: exit [n]\n"
+      "    Exit the shell.\n"
+      "\n"
+      "    Exits the shell with a status of n. If n is omitted, the exit\n"
+      "    status is that of the last command executed.\n");
+}  // xd_exit_help()
+
+/**
+ * @brief Executor of `exit` builtin command.
+ */
+static int xd_exit(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_exit_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  if (xd_sh_is_interactive) {
+    printf("exit\n");
+  }
+
+  if (argc > 2) {
+    fprintf(stderr, "xd-shell: exit: too many arguments\n");
+    xd_exit_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  int exit_code = xd_sh_last_exit_code;
+  if (argc == 2) {
+    long num = -1;
+    if (xd_utils_strtol(argv[1], &num) == -1) {
+      fprintf(stderr, "xd-shell: exit: %s: numeric argument required\n",
+              argv[1]);
+      exit_code = XD_SH_EXIT_CODE_USAGE;
+    }
+    else {
+      exit_code = (int)(num & XD_EXIT_CODE_MASK);
+    }
+  }
+
+  fflush(stdout);
+  fflush(stderr);
+  exit(exit_code);
+}  // xd_exit()
 
 // ========================
 // Public Functions
