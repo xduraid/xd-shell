@@ -109,6 +109,11 @@ static void xd_pwd_usage();
 static void xd_pwd_help();
 static int xd_pwd(int argc, char **argv);
 
+static void xd_echo_usage();
+static void xd_echo_help();
+static int xd_echo(int argc, char **argv);
+static int xd_echo_print_escaped(const char *str);
+
 static void xd_exit_usage();
 static void xd_exit_help();
 static int xd_exit(int argc, char **argv);
@@ -133,6 +138,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"unexport", xd_unexport},
     {"cd",       xd_cd      },
     {"pwd",      xd_pwd     },
+    {"echo",     xd_echo    },
     {"exit",     xd_exit    },
 };
 
@@ -1242,6 +1248,159 @@ static int xd_pwd(int argc, char **argv) {
 
   return EXIT_SUCCESS;
 }  // xd_pwd()
+
+/**
+ * @brief Prints usage information for the `echo` builtin.
+ */
+static void xd_echo_usage() {
+  fprintf(stderr, "echo: usage: echo: echo [-ne] [arg ...]\n");
+}  // xd_echo_usage()
+
+/**
+ * @brief Prints detailed help information for the `echo` builtin.
+ */
+static void xd_echo_help() {
+  printf(
+      "echo: echo [-ne] [arg ...]\n"
+      "    Write arguments to the standard output.\n"
+      "\n"
+      "    Display the args, separated by a single space character and \n"
+      "    followed by a newline, on the standard output.\n"
+      "\n"
+      "    Options:\n"
+      "      -n        do not output the trailing newline\n"
+      "      -e        enable interpretation of backslash escapes\n"
+      "\n"
+      "    The following backslash escapes are recognized with -e:\n"
+      "      \\a        alert (BEL)\n"
+      "      \\b        backspace\n"
+      "      \\c        suppress further output\n"
+      "      \\e        escape character\n"
+      "      \\E        escape character\n"
+      "      \\f        form feed\n"
+      "      \\n        new line\n"
+      "      \\r        carriage return\n"
+      "      \\t        horizontal tab\n"
+      "      \\v        vertical tab\n"
+      "      \\\\        backslash\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_echo_help()
+
+/**
+ * @brief Executor of `echo` builtin command.
+ */
+static int xd_echo(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_echo_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int opt;
+  int no_newline = 0;
+  int interpret_escapes = 0;
+  while ((opt = getopt(argc, argv, "+ne")) != -1) {
+    switch (opt) {
+      case 'n':
+        no_newline = 1;
+        break;
+      case 'e':
+        interpret_escapes = 1;
+        break;
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: echo: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_echo_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  int stop_output = 0;
+  for (int i = optind; i < argc; i++) {
+    if (interpret_escapes) {
+      stop_output = xd_echo_print_escaped(argv[i]);
+    }
+    else {
+      printf("%s%s", i > optind ? " " : "", argv[i]);
+    }
+
+    if (stop_output) {
+      break;
+    }
+  }
+
+  if (!no_newline && !stop_output) {
+    printf("\n");
+  }
+
+  fflush(stdout);
+  return EXIT_SUCCESS;
+}  // xd_echo()
+
+/**
+ * @brief Helper for echo, it is used for printing the string argument to
+ * `stdout` when escape sequences `-e` are enabled.
+ *
+ * @param str The string to be printed.
+ *
+ * @return `1` if output was stopped due to encountering `\c`, `0` otherwise.
+ */
+static int xd_echo_print_escaped(const char *str) {
+  for (int i = 0; str[i] != '\0'; ++i) {
+    if (str[i] != '\\') {
+      printf("%c", str[i]);
+      continue;
+    }
+
+    if (str[i + 1] == '\0') {
+      printf("\\");
+      break;
+    }
+
+    char next = str[++i];
+
+    switch (next) {
+      case 'a':
+        printf("\a");
+        break;
+      case 'b':
+        printf("\b");
+        break;
+      case 'c':
+        return 1;
+      case 'e':
+      case 'E':
+        printf("\x1B");
+        break;
+      case 'f':
+        printf("\f");
+        break;
+      case 'n':
+        printf("\n");
+        break;
+      case 'r':
+        printf("\r");
+        break;
+      case 't':
+        printf("\t");
+        break;
+      case 'v':
+        printf("\v");
+        break;
+      case '\\':
+        printf("\\");
+        break;
+      default:
+        printf("\\%c", next);
+        break;
+    }
+  }
+  return 0;
+}  // xd_echo_print_escaped()
 
 /**
  * @brief Prints usage information for the `exit` builtin.
