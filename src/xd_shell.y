@@ -68,6 +68,11 @@ static int xd_command_buffer_length = 0;
  */
 static int xd_command_buffer_capacity = 0;
 
+/**
+ * @brief The lookahead token.
+ */
+extern int yychar;
+
 // ========================
 // Public Variables
 // ========================
@@ -124,25 +129,6 @@ static void xd_command_buffer_reset() {
   xd_command_buffer_length = 0;
   xd_command_buffer[0] = '\0';
 }  // xd_command_buffer_reset()
-
-
-/**
- * @brief Prints parsing errors.
- */
-void yyerror(const char *s) {
-  (void)s;
-  if (yytext == NULL) {
-    fprintf(stderr, "xd-shell: syntax error\n");
-    return;
-  }
-  if (strcmp(yytext, "\n") == 0) {
-    fprintf(stderr, "xd-shell: syntax error near unexpected token 'newline'\n");
-  }
-  else {
-    fprintf(stderr, "xd-shell: syntax error near unexpected token '%s'\n",
-            yytext);
-  }
-}  // yyerror()
 
 // ========================
 // Public Functions
@@ -363,3 +349,23 @@ io_redirection:
   ;
 
 %%
+
+/**
+ * @brief Prints parsing errors.
+ */
+void yyerror(const char *s) {
+  (void)s;
+  if (yytext == NULL) {
+    fprintf(stderr, "xd-shell: syntax error\n");
+  }
+  else if (yychar == YYEOF) {
+    fprintf(stderr, "xd-shell: syntax error near unexpected token 'EOF'\n");
+  }
+  else if (strcmp(yytext, "\n") == 0) {
+    fprintf(stderr, "xd-shell: syntax error near unexpected token 'newline'\n");
+  }
+  else {
+    fprintf(stderr, "xd-shell: syntax error near unexpected token '%s'\n",
+            yytext);
+  }
+}  // yyerror()
