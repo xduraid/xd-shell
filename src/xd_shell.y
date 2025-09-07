@@ -35,8 +35,12 @@
 
 static void xd_command_buffer_append_str(const char *str);
 static void xd_command_buffer_reset();
+void yyparse_initialize();
 void yyparse_cleanup();
 void yyerror(const char *s);
+
+extern void yylex_initialize();
+extern void yylex_cleanup();
 extern int yylex();
 
 // ========================
@@ -82,67 +86,6 @@ extern int yychar;
  */
 xd_command_t *xd_current_command = NULL;
 
-// ========================
-// Function Definitions
-// ========================
-
-/**
- * @brief Adds the passed string to the end of the command buffer.
- *
- * @param str The string to be added.
- *
- * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
- */
-static void xd_command_buffer_append_str(const char *str) {
-  int str_len = (int)strlen(str);
-
-  // resize if needed
-  if (xd_command_buffer_length + str_len > xd_command_buffer_capacity - 1) {
-    // resize to multiple of `LINE_MAX`
-    int new_capacity = xd_command_buffer_length + str_len + 1;
-    if (new_capacity % LINE_MAX != 0) {
-      new_capacity += LINE_MAX - (new_capacity % LINE_MAX);
-    }
-
-    char *ptr = (char *)realloc(xd_command_buffer, sizeof(char) * new_capacity);
-    if (ptr == NULL) {
-      fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
-              strerror(errno));
-      exit(EXIT_FAILURE);
-    }
-
-    xd_command_buffer = ptr;
-    xd_command_buffer_capacity = new_capacity;
-  }
-  memcpy(xd_command_buffer + xd_command_buffer_length, str, str_len);
-  xd_command_buffer_length += str_len;
-  xd_command_buffer[xd_command_buffer_length] = '\0';
-}  // xd_command_buffer_append_str()
-
-/**
- * @brief Resets the command buffer to its initial empty state.
- */
-static void xd_command_buffer_reset() {
-  if (xd_command_buffer == NULL) {
-    return;
-  }
-  xd_command_buffer_length = 0;
-  xd_command_buffer[0] = '\0';
-}  // xd_command_buffer_reset()
-
-// ========================
-// Public Functions
-// ========================
-
-/**
- * @brief Frees up the memory allocated during parsing.
- */
-void yyparse_cleanup() {
-  xd_job_destroy(xd_current_job);
-  xd_command_destroy(xd_current_command);
-  free(xd_command_buffer);
-}  // yyparse_cleanup()
-
 %}
 
 /* ============================== */
@@ -150,10 +93,6 @@ void yyparse_cleanup() {
 /* ============================== */
 
 %define parse.error detailed
-
-%initial-action {
-  xd_current_job = xd_job_create();
-}
 
 /* ============================== */
 /* Types and Tokens               */
@@ -349,6 +288,76 @@ io_redirection:
   ;
 
 %%
+
+// ========================
+// Function Definitions
+// ========================
+
+/**
+ * @brief Adds the passed string to the end of the command buffer.
+ *
+ * @param str The string to be added.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+static void xd_command_buffer_append_str(const char *str) {
+  int str_len = (int)strlen(str);
+
+  // resize if needed
+  if (xd_command_buffer_length + str_len > xd_command_buffer_capacity - 1) {
+    // resize to multiple of `LINE_MAX`
+    int new_capacity = xd_command_buffer_length + str_len + 1;
+    if (new_capacity % LINE_MAX != 0) {
+      new_capacity += LINE_MAX - (new_capacity % LINE_MAX);
+    }
+
+    char *ptr = (char *)realloc(xd_command_buffer, sizeof(char) * new_capacity);
+    if (ptr == NULL) {
+      fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+              strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+
+    xd_command_buffer = ptr;
+    xd_command_buffer_capacity = new_capacity;
+  }
+  memcpy(xd_command_buffer + xd_command_buffer_length, str, str_len);
+  xd_command_buffer_length += str_len;
+  xd_command_buffer[xd_command_buffer_length] = '\0';
+}  // xd_command_buffer_append_str()
+
+/**
+ * @brief Resets the command buffer to its initial empty state.
+ */
+static void xd_command_buffer_reset() {
+  if (xd_command_buffer == NULL) {
+    return;
+  }
+  xd_command_buffer_length = 0;
+  xd_command_buffer[0] = '\0';
+}  // xd_command_buffer_reset()
+
+// ========================
+// Public Functions
+// ========================
+
+/**
+ * @brief Initializes the scanner and parser.
+ */
+void yyparse_initialize() {
+  yylex_initialize();
+  xd_current_job = xd_job_create();
+}  // yyparse_initialize()
+
+/**
+ * @brief Frees up the resources allocaed for the scanner and parser.
+ */
+void yyparse_cleanup() {
+  yylex_cleanup();
+  xd_job_destroy(xd_current_job);
+  xd_command_destroy(xd_current_command);
+  free(xd_command_buffer);
+}  // yyparse_cleanup()
 
 /**
  * @brief Prints parsing errors.

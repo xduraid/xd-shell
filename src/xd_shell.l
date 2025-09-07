@@ -51,7 +51,7 @@ static void xd_alias_expansion_stack_push(char *alias_name);
 static void xd_alias_expansion_stack_pop();
 static int xd_alias_is_being_expanded(const char *alias_name);
 
-void yylex_init();
+void yylex_initialize();
 void yylex_cleanup();
 
 // ========================
@@ -79,98 +79,6 @@ static xd_list_t *xd_alias_expansion_stack = NULL;
 // ========================
 // Public Variables
 // ========================
-
-// ========================
-// Function Definitions
-// ========================
-
-/**
- * @brief Reads one character from `stdin` and returns it.
- *
- * If shell is running in interactive mode, it uses `xd_readline()`, otherwise
- * it reads the character normally using `getchar()`.
- *
- * @return The read character.
- */
-static int xd_getc() {
-  if (!xd_sh_is_interactive) {
-    return getchar();
-  }
-
-  if (xd_interactive_next_char == NULL || *xd_interactive_next_char == '\0') {
-    errno = 0;
-    xd_readline_prompt = xd_sh_prompt;
-    xd_sh_readline_running = 1;
-    xd_interactive_next_char = xd_readline();
-    xd_sh_readline_running = 0;
-    if (xd_interactive_next_char == NULL) {
-      if (errno == EINTR) {
-        // system call interrupt
-        return xd_getc();
-      }
-      // EOF (`Ctrl+D`)
-      return EOF;
-    }
-  }
-  return *xd_interactive_next_char++;
-}  // xd_getc()
-
-
-/**
- * @brief Pushes the passed alias name to the top of the alias expansion stack.
- *
- * @param alias_name Pointer to the alias name string.
- */
-static void xd_alias_expansion_stack_push(char *alias_name) {
-  xd_list_add_first(xd_alias_expansion_stack, alias_name);
-}  // xd_alias_expansion_stack_push()
-
-/**
- * @brief Pops an element from the top of the alias expansion stack.
- */
-static void xd_alias_expansion_stack_pop() {
-  if (xd_alias_expansion_stack->length == 0) {
-    return;
-  }
-  xd_list_remove_first(xd_alias_expansion_stack);
-}  // xd_alias_expansion_stack_pop()
-
-/**
- * @brief Checks if an alias is currently being expanded.
- *
- * @param alias_name Name of the alias to be checked.
- * @return `1` if the alias is being expanded, `0` otherwise.
- */
-static int xd_alias_is_being_expanded(const char *alias_name) {
-  xd_list_node_t *node = xd_alias_expansion_stack->head;
-  while (node != NULL && node->data != NULL) {
-    if (xd_alias_expansion_stack->comp_func(alias_name, node->data) == 0) {
-      return 1;
-    }
-    node = node->next;
-  }
-  return 0;
-}  // xd_alias_is_being_expanded()
-
-// ========================
-// Public Functions
-// ========================
-
-/**
- * @brief Initialize scanner before scanning start.
- */
-void yylex_init() {
-  xd_alias_expansion_stack =
-      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
-                     xd_utils_str_comp_func);
-}  // yylex_init()
-
-/**
- * @brief Frees up the memory allocated during scanning.
- */
-void yylex_cleanup() {
-  xd_list_destroy(xd_alias_expansion_stack);
-}  // yylex_cleanup()
 
 %}
 
@@ -283,3 +191,96 @@ void yylex_cleanup() {
 }
 
 %%
+
+// ========================
+// Function Definitions
+// ========================
+
+/**
+ * @brief Reads one character from `stdin` and returns it.
+ *
+ * If shell is running in interactive mode, it uses `xd_readline()`, otherwise
+ * it reads the character normally using `getchar()`.
+ *
+ * @return The read character.
+ */
+static int xd_getc() {
+  if (!xd_sh_is_interactive) {
+    return getchar();
+  }
+
+  if (xd_interactive_next_char == NULL || *xd_interactive_next_char == '\0') {
+    errno = 0;
+    xd_readline_prompt = xd_sh_prompt;
+    xd_sh_readline_running = 1;
+    xd_interactive_next_char = xd_readline();
+    xd_sh_readline_running = 0;
+    if (xd_interactive_next_char == NULL) {
+      if (errno == EINTR) {
+        // system call interrupt
+        return xd_getc();
+      }
+      // EOF (`Ctrl+D`)
+      return EOF;
+    }
+  }
+  return *xd_interactive_next_char++;
+}  // xd_getc()
+
+
+/**
+ * @brief Pushes the passed alias name to the top of the alias expansion stack.
+ *
+ * @param alias_name Pointer to the alias name string.
+ */
+static void xd_alias_expansion_stack_push(char *alias_name) {
+  xd_list_add_first(xd_alias_expansion_stack, alias_name);
+}  // xd_alias_expansion_stack_push()
+
+/**
+ * @brief Pops an element from the top of the alias expansion stack.
+ */
+static void xd_alias_expansion_stack_pop() {
+  if (xd_alias_expansion_stack->length == 0) {
+    return;
+  }
+  xd_list_remove_first(xd_alias_expansion_stack);
+}  // xd_alias_expansion_stack_pop()
+
+/**
+ * @brief Checks if an alias is currently being expanded.
+ *
+ * @param alias_name Name of the alias to be checked.
+ * @return `1` if the alias is being expanded, `0` otherwise.
+ */
+static int xd_alias_is_being_expanded(const char *alias_name) {
+  xd_list_node_t *node = xd_alias_expansion_stack->head;
+  while (node != NULL && node->data != NULL) {
+    if (xd_alias_expansion_stack->comp_func(alias_name, node->data) == 0) {
+      return 1;
+    }
+    node = node->next;
+  }
+  return 0;
+}  // xd_alias_is_being_expanded()
+
+// ========================
+// Public Functions
+// ========================
+
+/**
+ * @brief Initializes the scanner.
+ */
+void yylex_initialize() {
+  xd_alias_expansion_stack =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+}  // yylex_init()
+
+/**
+ * @brief Frees up the resources allocaed for the scanner.
+ */
+void yylex_cleanup() {
+  xd_list_destroy(xd_alias_expansion_stack);
+  yylex_destroy();
+}  // yylex_cleanup()
