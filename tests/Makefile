@@ -30,7 +30,8 @@ CC_FLAGS = -std=gnu11 \
 TEST_BINS = $(TESTS_BIN_DIR)/test_xd_command \
 						$(TESTS_BIN_DIR)/test_xd_job \
 						$(TESTS_BIN_DIR)/test_xd_list \
-						$(TESTS_BIN_DIR)/test_xd_map
+						$(TESTS_BIN_DIR)/test_xd_map \
+						$(TESTS_BIN_DIR)/test_xd_string
 
 .SUFFIXES:
 .PHONY: all run_tests run_unit_tests run_integration_tests clean help
@@ -50,6 +51,10 @@ $(TESTS_BIN_DIR)/test_xd_list: $(TESTS_SRC_DIR)/test_xd_list.c $(MAIN_SRC_DIR)/x
 	$(CC) $(CC_FLAGS) -o $@ $^
 
 $(TESTS_BIN_DIR)/test_xd_map: $(TESTS_SRC_DIR)/test_xd_map.c $(MAIN_SRC_DIR)/xd_map.c $(MAIN_SRC_DIR)/xd_list.c
+	@mkdir -p $(TESTS_BIN_DIR)
+	$(CC) $(CC_FLAGS) -o $@ $^
+
+$(TESTS_BIN_DIR)/test_xd_string: $(TESTS_SRC_DIR)/test_xd_string.c $(MAIN_SRC_DIR)/xd_string.c
 	@mkdir -p $(TESTS_BIN_DIR)
 	$(CC) $(CC_FLAGS) -o $@ $^
 
