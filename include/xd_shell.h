@@ -93,6 +93,11 @@ extern volatile sig_atomic_t xd_sh_readline_running;
 extern int xd_sh_last_exit_code;
 
 /**
+ * @brief Process id of the last job lunched in background.
+ */
+extern pid_t xd_sh_last_bg_job_pid;
+
+/**
  * @brief The current modes for the shell.
  */
 extern struct termios xd_sh_tty_modes;

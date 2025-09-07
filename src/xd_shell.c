@@ -63,6 +63,7 @@ pid_t xd_sh_pid = 0;
 pid_t xd_sh_pgid = 0;
 volatile sig_atomic_t xd_sh_readline_running = 0;
 int xd_sh_last_exit_code = 0;
+pid_t xd_sh_last_bg_job_pid = 0;
 struct termios xd_sh_tty_modes = {0};
 
 // ========================

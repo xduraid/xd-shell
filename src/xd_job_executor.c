@@ -755,6 +755,7 @@ void xd_job_executor(xd_job_t *job) {
     xd_jobs_add(xd_job);
     if (xd_sh_is_interactive) {
       printf("[%d] %d\n", xd_job->job_id, xd_command->pid);
+      xd_sh_last_bg_job_pid = xd_command->pid;
     }
     xd_sh_last_exit_code = EXIT_SUCCESS;
   }
