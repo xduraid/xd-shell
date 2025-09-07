@@ -150,6 +150,10 @@ static xd_list_t *xd_alias_expansion_stack = NULL;
   printf("%d\n", xd_sh_last_bg_job_pid);
 }
 
+"$$" {
+  printf("%s\n", xd_sh_path);
+}
+
 [^ \t\n<>|&]+ {
   if (xd_current_command == NULL && xd_aliases_is_valid_name(yytext)) {
     // first argument in argv

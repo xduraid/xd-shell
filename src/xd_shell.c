@@ -16,6 +16,7 @@
 #include "xd_shell.h"
 
 #include <errno.h>
+#include <limits.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,6 +60,7 @@ extern void yyparse_cleanup();
 
 int xd_sh_is_interactive = 0;
 char xd_sh_prompt[XD_SH_PROMPT_MAX_LENGTH] = {0};
+char xd_sh_path[PATH_MAX] = {0};
 pid_t xd_sh_pid = 0;
 pid_t xd_sh_pgid = 0;
 volatile sig_atomic_t xd_sh_readline_running = 0;
@@ -118,6 +120,12 @@ static void xd_sh_init() {
   xd_aliases_init();
   xd_vars_init();
   yyparse_initialize();
+
+  if (realpath("/proc/self/exe", xd_sh_path) == NULL) {
+    fprintf(stderr, "xd-shell: failed to get shell path\n");
+    exit(EXIT_FAILURE);
+  }
+  xd_vars_put("SHELL", xd_sh_path, 1);
 }  // xd_sh_init()
 
 /**

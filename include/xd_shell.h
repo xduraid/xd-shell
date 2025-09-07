@@ -73,6 +73,11 @@ extern int xd_sh_is_interactive;
 extern char xd_sh_prompt[];
 
 /**
+ * @brief The absolute path of the shell executable.
+ */
+extern char xd_sh_path[];
+
+/**
  * @brief Process id of the main process.
  */
 extern pid_t xd_sh_pid;
