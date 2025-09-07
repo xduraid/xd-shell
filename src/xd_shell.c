@@ -250,7 +250,8 @@ static int xd_sh_setup_signal_handlers() {
  * @return returns the shell's exit code.
  */
 static int xd_sh_run() {
-  return yyparse();
+  yyparse();
+  return xd_sh_last_exit_code;
 }  // xd_sh_run()
 
 // ========================

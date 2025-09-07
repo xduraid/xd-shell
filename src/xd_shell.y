@@ -23,6 +23,7 @@
 #include "xd_command.h"
 #include "xd_job.h"
 #include "xd_jobs.h"
+#include "xd_shell.h"
 #include "xd_utils.h"
 
 // ========================
@@ -141,6 +142,8 @@ job:
 
       xd_job_destroy(xd_current_job);
       xd_current_job = xd_job_create();
+
+      xd_sh_last_exit_code = 2;
       yyerrok;
       yyclearin;
     }
