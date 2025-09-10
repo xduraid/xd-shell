@@ -107,6 +107,7 @@ xd_command_t *xd_current_command = NULL;
 %token <string> ARG
 %token PIPE AMPERSAND NEWLINE
 %token LT GT GT_GT TWO_GT TWO_GT_GT GT_AMPERSAND GT_GT_AMPERSAND
+%token LEX_INTR
 
 %destructor { free($$); } <string>
 
@@ -140,10 +141,28 @@ job:
       xd_jobs_refresh();
       xd_jobs_sigchld_unblock();
 
+      xd_command_destroy(xd_current_command);
+      xd_current_command = NULL;
+
       xd_job_destroy(xd_current_job);
       xd_current_job = xd_job_create();
 
       xd_sh_last_exit_code = 2;
+      yyerrok;
+      yyclearin;
+    }
+  | error LEX_INTR {
+      xd_jobs_sigchld_block();
+      xd_jobs_refresh();
+      xd_jobs_sigchld_unblock();
+
+      xd_command_destroy(xd_current_command);
+      xd_current_command = NULL;
+
+      xd_job_destroy(xd_current_job);
+      xd_current_job = xd_job_create();
+
+      xd_sh_last_exit_code = XD_SH_EXIT_CODE_SIGINTR;
       yyerrok;
       yyclearin;
     }
@@ -367,6 +386,9 @@ void yyparse_cleanup() {
  */
 void yyerror(const char *s) {
   (void)s;
+  if (yychar == LEX_INTR) {
+    return; // don't print error message on `SIGINTR`
+  }
   if (yytext == NULL) {
     fprintf(stderr, "xd-shell: syntax error\n");
   }

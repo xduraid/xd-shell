@@ -29,6 +29,11 @@
 #define XD_SH_PROMPT_MAX_LENGTH (5000)
 
 /**
+ * @brief The string used as prompt in multi-line input.
+ */
+#define XD_SH_PROMPT2 "> "
+
+/**
  * @brief Number of nanoseconds in one second.
  */
 #define XD_SH_NANOSECONDS_PER_SECOND 1000000000ULL
@@ -48,6 +53,11 @@
  * status.
  */
 #define XD_SH_EXIT_CODE_SIGNAL_OFFSET (128)
+
+/**
+ * @brief Exit code due to `SIGINTR`.
+ */
+#define XD_SH_EXIT_CODE_SIGINTR (130)
 
 /**
  * @brief The exit code when args are invalid.
