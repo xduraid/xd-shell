@@ -104,7 +104,7 @@ static xd_string_t *xd_arg_str = NULL;
 /* Start Conditions               */
 /* ============================== */
 
-%x ARG_STATE SQ_STATE DQ_STATE PRM_STATE
+%x ARG_STATE SQ_STATE DQ_STATE PRM_STATE CMD_STATE
 
 /* ============================== */
 /* Patterns                       */
@@ -182,7 +182,13 @@ static xd_string_t *xd_arg_str = NULL;
   xd_string_append_str(xd_arg_str, yytext);
 }
 
-"$"|"{"|[^ \t\n<>|&'"${] {
+"$(" {
+  yy_push_state(ARG_STATE);
+  yy_push_state(CMD_STATE);
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+"$"|"{"|"("|[^ \t\n<>|&'"${(] {
   yy_push_state(ARG_STATE);
   xd_string_append_str(xd_arg_str, yytext);
 }
@@ -206,7 +212,12 @@ static xd_string_t *xd_arg_str = NULL;
   xd_string_append_str(xd_arg_str, yytext);
 }
 
-<DQ_STATE>"$"|"{"|[^"${]+ {
+<DQ_STATE>"$(" {
+  yy_push_state(CMD_STATE);
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<DQ_STATE>"$"|"{"|"("|[^"${(]+ {
   xd_string_append_str(xd_arg_str, yytext);
 }
 
@@ -230,7 +241,41 @@ static xd_string_t *xd_arg_str = NULL;
   xd_string_append_str(xd_arg_str, yytext);
 }
 
-<PRM_STATE>"$"|"{"|[^}'"${] {
+<PRM_STATE>"$(" {
+  yy_push_state(CMD_STATE);
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<PRM_STATE>"$"|"{"|"("|[^}'"${(]+ {
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<CMD_STATE>")" {
+  yy_pop_state();
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<CMD_STATE>"'" {
+  yy_push_state(SQ_STATE);
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<CMD_STATE>"\"" {
+  yy_push_state(DQ_STATE);
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<CMD_STATE>"${" {
+  yy_push_state(PRM_STATE);
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<CMD_STATE>"$(" {
+  yy_push_state(CMD_STATE);
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<CMD_STATE>"$"|"{"|"("|[^)'"${(]+ {
   xd_string_append_str(xd_arg_str, yytext);
 }
 
@@ -249,7 +294,12 @@ static xd_string_t *xd_arg_str = NULL;
   xd_string_append_str(xd_arg_str, yytext);
 }
 
-<ARG_STATE>"$"|"{"|[^ \t\n<>|&'"${]+ {
+<ARG_STATE>"$(" {
+  yy_push_state(CMD_STATE);
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<ARG_STATE>"$"|"{"|"("|[^ \t\n<>|&'"${(]+ {
   xd_string_append_str(xd_arg_str, yytext);
 }
 
@@ -325,6 +375,19 @@ static xd_string_t *xd_arg_str = NULL;
   }
   else {
     fprintf(stderr, "xd-shell: unexpected EOF while waiting for matching '}'\n");
+    xd_sh_last_exit_code = 2;
+    yyterminate();
+  }
+}
+
+<CMD_STATE><<EOF>> {
+  if (xd_input_interrupted) {
+    xd_reset_scanner();
+    xd_input_interrupted = 0;
+    return LEX_INTR;
+  }
+  else {
+    fprintf(stderr, "xd-shell: unexpected EOF while waiting for matching ')'\n");
     xd_sh_last_exit_code = 2;
     yyterminate();
   }
