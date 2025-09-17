@@ -76,6 +76,11 @@ static char *xd_interactive_next_char = NULL;
 static int xd_input_interrupted = 0;
 
 /**
+ * @brief Indicates line continuation input (after '\newline').
+ */
+static int xd_line_cont = 0;
+
+/**
  * @brief Stack of currently expanded aliases, in sync with the yy buffer stack.
  *
  * Each element is a string for an alias buffer or `NULL` for non-alias buffers
@@ -188,7 +193,16 @@ static xd_string_t *xd_arg_str = NULL;
   xd_string_append_str(xd_arg_str, yytext);
 }
 
-"$"|"{"|"("|[^ \t\n<>|&'"${(] {
+\\\n {
+  xd_line_cont = 1;
+}
+
+\\. {
+  yy_push_state(ARG_STATE);
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+"$"|"{"|"("|"\\"|[^ \t\n<>|&'"${(\\] {
   yy_push_state(ARG_STATE);
   xd_string_append_str(xd_arg_str, yytext);
 }
@@ -217,7 +231,15 @@ static xd_string_t *xd_arg_str = NULL;
   xd_string_append_str(xd_arg_str, yytext);
 }
 
-<DQ_STATE>"$"|"{"|"("|[^"${(]+ {
+<DQ_STATE>\\\n {
+  xd_line_cont = 1;
+}
+
+<DQ_STATE>\\. {
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<DQ_STATE>"$"|"{"|"("|"\\"|[^"${(\\]+ {
   xd_string_append_str(xd_arg_str, yytext);
 }
 
@@ -246,7 +268,15 @@ static xd_string_t *xd_arg_str = NULL;
   xd_string_append_str(xd_arg_str, yytext);
 }
 
-<PRM_STATE>"$"|"{"|"("|[^}'"${(]+ {
+<PRM_STATE>\\\n {
+  xd_line_cont = 1;
+}
+
+<PRM_STATE>\\. {
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<PRM_STATE>"$"|"{"|"("|"\\"|[^}'"${(\\]+ {
   xd_string_append_str(xd_arg_str, yytext);
 }
 
@@ -275,7 +305,15 @@ static xd_string_t *xd_arg_str = NULL;
   xd_string_append_str(xd_arg_str, yytext);
 }
 
-<CMD_STATE>"$"|"{"|"("|[^)'"${(]+ {
+<CMD_STATE>\\\n {
+  xd_line_cont = 1;
+}
+
+<CMD_STATE>\\. {
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<CMD_STATE>"$"|"{"|"("|"\\"|[^)'"${(\\]+ {
   xd_string_append_str(xd_arg_str, yytext);
 }
 
@@ -299,7 +337,15 @@ static xd_string_t *xd_arg_str = NULL;
   xd_string_append_str(xd_arg_str, yytext);
 }
 
-<ARG_STATE>"$"|"{"|"("|[^ \t\n<>|&'"${(]+ {
+<ARG_STATE>\\\n {
+  xd_line_cont = 1;
+}
+
+<ARG_STATE>\\. {
+  xd_string_append_str(xd_arg_str, yytext);
+}
+
+<ARG_STATE>"$"|"{"|"("|"\\"|[^ \t\n<>|&'"${(\\]+ {
   xd_string_append_str(xd_arg_str, yytext);
 }
 
@@ -433,10 +479,11 @@ static int xd_getc() {
 
   if (xd_interactive_next_char == NULL || *xd_interactive_next_char == '\0') {
     errno = 0;
-    if (YYSTATE == INITIAL || YYSTATE == ARG_STATE) {
+    if (!xd_line_cont && (YYSTATE == INITIAL || YYSTATE == ARG_STATE)) {
       xd_readline_prompt = xd_sh_prompt;
     }
     else {
+      xd_line_cont = 0;
       xd_readline_prompt = XD_SH_PROMPT2;
     }
     xd_sh_readline_running = 1;
