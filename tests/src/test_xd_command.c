@@ -19,18 +19,16 @@
 #include "xd_command.h"
 #include "xd_ctest.h"
 
-static int test_xd_command_create1() {
+static int test_xd_command_create() {
   XD_TEST_START;
 
   // Arrange - Act
-  xd_command_t *command = xd_command_create("foo");
+  xd_command_t *command = xd_command_create();
 
   // Assert
   XD_TEST_ASSERT(command != NULL);
-  XD_TEST_ASSERT(command->argv != NULL);
-  XD_TEST_ASSERT(command->argc == 1);
-  XD_TEST_ASSERT(strcmp(command->argv[0], "foo") == 0);
-  XD_TEST_ASSERT(command->argv[1] == NULL);
+  XD_TEST_ASSERT(command->argv == NULL);
+  XD_TEST_ASSERT(command->argc == 0);
 
   XD_TEST_ASSERT(command->input_file == NULL);
   XD_TEST_ASSERT(command->output_file == NULL);
@@ -42,40 +40,25 @@ static int test_xd_command_create1() {
 xd_test_cleanup:
   xd_command_destroy(command);
   XD_TEST_END;
-}  // test_xd_command_create1()
-
-static int test_xd_command_create2() {
-  XD_TEST_START;
-
-  // Arrange - Act
-  xd_command_t *command = xd_command_create(NULL);
-
-  // Assert
-  XD_TEST_ASSERT(command == NULL);
-
-xd_test_cleanup:
-  xd_command_destroy(command);
-  XD_TEST_END;
-}  // test_xd_command_create2()
+}  // test_xd_command_create()
 
 static int test_xd_command_add_arg1() {
   XD_TEST_START;
 
   // Arrange
-  xd_command_t *command = xd_command_create("foo");
+  xd_command_t *command = xd_command_create();
 
   // Act
-  int ret = xd_command_add_arg(command, "bar");
+  int ret = xd_command_add_arg(command, "foo");
 
   // Assert
   XD_TEST_ASSERT(command != NULL);
   XD_TEST_ASSERT(ret == 0);
 
   XD_TEST_ASSERT(command->argv != NULL);
-  XD_TEST_ASSERT(command->argc == 2);
+  XD_TEST_ASSERT(command->argc == 1);
   XD_TEST_ASSERT(strcmp(command->argv[0], "foo") == 0);
-  XD_TEST_ASSERT(strcmp(command->argv[1], "bar") == 0);
-  XD_TEST_ASSERT(command->argv[2] == NULL);
+  XD_TEST_ASSERT(command->argv[1] == NULL);
 
   XD_TEST_ASSERT(command->input_file == NULL);
   XD_TEST_ASSERT(command->output_file == NULL);
@@ -93,11 +76,11 @@ static int test_xd_command_add_arg2() {
   XD_TEST_START;
 
   // Arrange
-  xd_command_t *command = xd_command_create("foo");
+  xd_command_t *command = xd_command_create();
 
   // Act
-  int ret1 = xd_command_add_arg(command, "bar");
-  int ret2 = xd_command_add_arg(command, "some");
+  int ret1 = xd_command_add_arg(command, "foo");
+  int ret2 = xd_command_add_arg(command, "bar");
 
   // Assert
   XD_TEST_ASSERT(command != NULL);
@@ -105,11 +88,10 @@ static int test_xd_command_add_arg2() {
   XD_TEST_ASSERT(ret2 == 0);
 
   XD_TEST_ASSERT(command->argv != NULL);
-  XD_TEST_ASSERT(command->argc == 3);
+  XD_TEST_ASSERT(command->argc == 2);
   XD_TEST_ASSERT(strcmp(command->argv[0], "foo") == 0);
   XD_TEST_ASSERT(strcmp(command->argv[1], "bar") == 0);
-  XD_TEST_ASSERT(strcmp(command->argv[2], "some") == 0);
-  XD_TEST_ASSERT(command->argv[3] == NULL);
+  XD_TEST_ASSERT(command->argv[2] == NULL);
 
   XD_TEST_ASSERT(command->input_file == NULL);
   XD_TEST_ASSERT(command->output_file == NULL);
@@ -127,7 +109,7 @@ static int test_xd_command_add_arg3() {
   XD_TEST_START;
 
   // Arrange
-  xd_command_t *command = xd_command_create("foo");
+  xd_command_t *command = xd_command_create();
 
   // Act
   int ret1 = xd_command_add_arg(NULL, "bar");
@@ -146,8 +128,7 @@ xd_test_cleanup:
 }  // test_xd_command_add_arg3()
 
 static xd_test_case test_suite[] = {
-    XD_TEST_CASE(test_xd_command_create1),
-    XD_TEST_CASE(test_xd_command_create2),
+    XD_TEST_CASE(test_xd_command_create),
     XD_TEST_CASE(test_xd_command_add_arg1),
     XD_TEST_CASE(test_xd_command_add_arg2),
     XD_TEST_CASE(test_xd_command_add_arg3),

@@ -24,18 +24,7 @@
 // Public Functions
 // ========================
 
-xd_command_t *xd_command_create(const char *exec) {
-  if (exec == NULL) {
-    return NULL;
-  }
-
-  char *executable = strdup(exec);
-  if (executable == NULL) {
-    fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
-            strerror(errno));
-    exit(EXIT_FAILURE);
-  }
-
+xd_command_t *xd_command_create() {
   xd_command_t *command = (xd_command_t *)malloc(sizeof(xd_command_t));
   if (command == NULL) {
     fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
@@ -43,16 +32,8 @@ xd_command_t *xd_command_create(const char *exec) {
     exit(EXIT_FAILURE);
   }
 
-  command->argc = 1;
-  command->argv = (char **)malloc(sizeof(char *) * (command->argc + 1));
-  if (command->argv == NULL) {
-    fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
-            strerror(errno));
-    exit(EXIT_FAILURE);
-  }
-
-  command->argv[command->argc - 1] = executable;
-  command->argv[command->argc] = NULL;
+  command->argc = 0;
+  command->argv = NULL;
 
   command->input_file = NULL;
   command->output_file = NULL;

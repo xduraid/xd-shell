@@ -193,7 +193,8 @@ executable:
       xd_command_buffer_reset();
       xd_command_buffer_append_str($1);
 
-      xd_current_command = xd_command_create($1);
+      xd_current_command = xd_command_create();
+      xd_command_add_arg(xd_current_command, $1);
       free($1);
     }
   ;

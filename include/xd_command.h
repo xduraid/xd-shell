@@ -45,20 +45,16 @@ typedef struct xd_command_t {
 // ========================
 
 /**
- * @brief Creates and initializes a new `xd_command_t` structure with the passed
- * executable as the first argument in its argument array.
+ * @brief Creates and initializes a new `xd_command_t` structure.
  *
- * @param exec The name or path of the executable.
- *
- * @return A pointer to the newly created `xd_command_t` structure or `NULL` if
- * the passed string `exec` is `NULL`.
+ * @return A pointer to the newly created `xd_command_t` structure.
  *
  * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
  *
  * @note The caller is responsible for freeing the allocated memory by calling
  * `xd_command_destroy()` and passing it the returned pointer.
  */
-xd_command_t *xd_command_create(const char *exec);
+xd_command_t *xd_command_create();
 
 /**
  * @brief Frees the memory allocated for the passed `xd_command_t` structure.
