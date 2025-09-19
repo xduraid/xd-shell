@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "xd_arg_expander.h"
 #include "xd_command.h"
 #include "xd_job.h"
 #include "xd_jobs.h"
@@ -88,9 +89,20 @@ xd_command_t *xd_current_command = NULL;
 /* Types and Tokens               */
 /* ============================== */
 
+%code requires {
+  /**
+   * @brief Represents a pair of strings.
+   */
+  typedef struct xd_string_pair_t {
+    char *first;   // First string in the pair
+    char *second;  // Second string in the pair
+  } xd_string_pair_t;
+}
+
 %union
 {
   char *string;
+  xd_string_pair_t *string_pair;
 }
 
 %token <string> ARG
@@ -98,7 +110,10 @@ xd_command_t *xd_current_command = NULL;
 %token LT GT GT_GT TWO_GT TWO_GT_GT GT_AMPERSAND GT_GT_AMPERSAND
 %token LEX_INTR
 
+%nterm <string_pair> redirection_arg
+
 %destructor { free($$); } <string>
+%destructor { free($$->first); free($$->second); free($$); } <string_pair>
 
 /* ============================== */
 /* Grammar Rules                  */
@@ -170,36 +185,42 @@ command_list:
   ;
 
 command:
-    executable argument_list io_redirection_list {
+    argument_list io_redirection_list {
       xd_current_command->str = xd_utils_strdup(xd_command_str->str);
       xd_job_add_command(xd_current_job, xd_current_command);
       xd_current_command = NULL;
     }
   ;
 
-executable:
-    ARG {
-      xd_string_clear(xd_command_str);
-      xd_string_append_str(xd_command_str, $1);
-
-      xd_current_command = xd_command_create();
-      xd_command_add_arg(xd_current_command, $1);
-      free($1);
-    }
-  ;
-
 argument_list:
     argument_list argument
-  | %empty
+  | argument
   ;
 
 argument:
     ARG {
-      xd_string_append_str(xd_command_str, " ");
+      if (xd_current_command == NULL) {
+        xd_current_command = xd_command_create();
+        xd_string_clear(xd_command_str);
+      }
+      else {
+        xd_string_append_str(xd_command_str, " ");
+      }
+
       xd_string_append_str(xd_command_str, $1);
 
-      xd_command_add_arg(xd_current_command, $1);
+      xd_list_t *list = xd_arg_expander($1);
+      if (list == NULL) {
+        xd_list_destroy(list);
+        free($1);
+        YYERROR;
+      }
       free($1);
+
+      for (xd_list_node_t *node = list->head; node != NULL; node = node->next) {
+        xd_command_add_arg(xd_current_command, node->data);
+      }
+      xd_list_destroy(list);
     }
   ;
 
@@ -209,93 +230,137 @@ io_redirection_list:
   ;
 
 io_redirection:
-    LT ARG {
+    LT redirection_arg {
       // input redirection
       xd_string_append_str(xd_command_str, " < ");
-      xd_string_append_str(xd_command_str, $2);
+      xd_string_append_str(xd_command_str, $2->first);
 
       if (xd_current_command->input_file != NULL) {
         free(xd_current_command->input_file);
       }
-      xd_current_command->input_file = $2;
+      xd_current_command->input_file = $2->second;
+      free($2->first);
+      free($2);
     }
-  | GT ARG {
+  | GT redirection_arg {
       // output redirection
       xd_string_append_str(xd_command_str, " > ");
-      xd_string_append_str(xd_command_str, $2);
+      xd_string_append_str(xd_command_str, $2->first);
 
       if (xd_current_command->output_file != NULL) {
         free(xd_current_command->output_file);
       }
-      xd_current_command->output_file = $2;
+      xd_current_command->output_file = $2->second;
       xd_current_command->append_output = 0;
+      free($2->first);
+      free($2);
     }
-  | GT_GT ARG  {
+  | GT_GT redirection_arg  {
       // output redirection (append)
       xd_string_append_str(xd_command_str, " >> ");
-      xd_string_append_str(xd_command_str, $2);
+      xd_string_append_str(xd_command_str, $2->first);
 
       if (xd_current_command->output_file != NULL) {
         free(xd_current_command->output_file);
       }
-      xd_current_command->output_file = $2;
+      xd_current_command->output_file = $2->second;
       xd_current_command->append_output = 1;
+      free($2->first);
+      free($2);
     }
-  | TWO_GT ARG {
+  | TWO_GT redirection_arg {
       // error redirection
       xd_string_append_str(xd_command_str, " 2> ");
-      xd_string_append_str(xd_command_str, $2);
+      xd_string_append_str(xd_command_str, $2->first);
 
       if (xd_current_command->error_file != NULL) {
         free(xd_current_command->error_file);
       }
-      xd_current_command->error_file = $2;
+      xd_current_command->error_file = $2->second;
       xd_current_command->append_error = 0;
+      free($2->first);
+      free($2);
     }
-  | TWO_GT_GT ARG {
+  | TWO_GT_GT redirection_arg {
       // error redirection (append)
       xd_string_append_str(xd_command_str, " 2>> ");
-      xd_string_append_str(xd_command_str, $2);
+      xd_string_append_str(xd_command_str, $2->first);
 
       if (xd_current_command->error_file != NULL) {
         free(xd_current_command->error_file);
       }
-      xd_current_command->error_file = $2;
+      xd_current_command->error_file = $2->second;
       xd_current_command->append_error = 1;
+      free($2->first);
+      free($2);
     }
-  | GT_AMPERSAND ARG {
+  | GT_AMPERSAND redirection_arg {
       // output and error redirection
       xd_string_append_str(xd_command_str, " >& ");
-      xd_string_append_str(xd_command_str, $2);
+      xd_string_append_str(xd_command_str, $2->first);
 
       if (xd_current_command->output_file != NULL) {
         free(xd_current_command->output_file);
       }
-      xd_current_command->output_file = $2;
+      xd_current_command->output_file = $2->second;
       xd_current_command->append_output = 0;
 
       if (xd_current_command->error_file != NULL) {
         free(xd_current_command->error_file);
       }
-      xd_current_command->error_file = xd_utils_strdup($2);
+      xd_current_command->error_file = xd_utils_strdup($2->second);
       xd_current_command->append_error = 0;
+      free($2->first);
+      free($2);
     }
-  | GT_GT_AMPERSAND ARG {
+  | GT_GT_AMPERSAND redirection_arg {
       // output and error redirection
       xd_string_append_str(xd_command_str, " >>& ");
-      xd_string_append_str(xd_command_str, $2);
+      xd_string_append_str(xd_command_str, $2->first);
 
       if (xd_current_command->output_file != NULL) {
         free(xd_current_command->output_file);
       }
-      xd_current_command->output_file = $2;
+      xd_current_command->output_file = $2->second;
       xd_current_command->append_output = 1;
 
       if (xd_current_command->error_file != NULL) {
         free(xd_current_command->error_file);
       }
-      xd_current_command->error_file = xd_utils_strdup($2);
+      xd_current_command->error_file = xd_utils_strdup($2->second);
       xd_current_command->append_error = 1;
+      free($2->first);
+      free($2);
+    }
+  ;
+
+redirection_arg:
+    ARG {
+      xd_list_t *list = xd_arg_expander($1);
+      if (list == NULL) {
+        xd_list_destroy(list);
+        free($1);
+        YYERROR;
+      }
+      if (list->length != 1) {
+        fprintf(stderr, "xd-shell: %s: ambiguous redirect\n", $1);
+        xd_list_destroy(list);
+        free($1);
+        YYERROR;
+      }
+
+      xd_string_pair_t *pair =
+          (xd_string_pair_t *)malloc(sizeof(xd_string_pair_t));
+      if (pair == NULL) {
+        fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+                strerror(errno));
+        exit(EXIT_FAILURE);
+      }
+      pair->first = $1;
+      pair->second = xd_utils_strdup(list->head->data);
+
+      $$ = pair;
+      xd_list_destroy(list);
     }
   ;
 

@@ -526,6 +526,10 @@ static void xd_execute_command() {
     exit(EXIT_FAILURE);
   }
 
+  if (xd_command->argc == 0) {
+    exit(EXIT_SUCCESS);
+  }
+
   const char *executable = xd_command->argv[0];
 
   if (xd_builtins_is_builtin(executable)) {
@@ -656,6 +660,7 @@ void xd_job_executor(xd_job_t *job) {
   xd_job = job;
 
   if (xd_job->command_count == 1 && !xd_job->is_background &&
+      xd_job->commands[0]->argc > 0 &&
       xd_builtins_is_builtin(xd_job->commands[0]->argv[0])) {
     xd_execute_builtin_no_fork();
     xd_job_destroy(xd_job);
