@@ -19,6 +19,18 @@
 #include "xd_list.h"
 
 /**
+ * @brief Initializes the argument expander.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+void xd_arg_expander_init();
+
+/**
+ * @brief Frees resources allocated for the argument expander.
+ */
+void xd_arg_expander_destroy();
+
+/**
  * @brief Performs shell expansions on the passed argument and returns a list
  * containing the result of the expansions.
  *

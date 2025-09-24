@@ -28,6 +28,7 @@
 #include <unistd.h>
 
 #include "xd_aliases.h"
+#include "xd_arg_expander.h"
 #include "xd_command.h"
 #include "xd_job.h"
 #include "xd_jobs.h"
@@ -120,6 +121,7 @@ static void xd_sh_init() {
   xd_aliases_init();
   xd_vars_init();
   yyparse_initialize();
+  xd_arg_expander_init();
 
   if (realpath("/proc/self/exe", xd_sh_path) == NULL) {
     fprintf(stderr, "xd-shell: failed to get shell path\n");
@@ -136,6 +138,7 @@ static void xd_sh_destroy() {
   xd_jobs_destroy();
   xd_aliases_destroy();
   xd_vars_destroy();
+  xd_arg_expander_destroy();
 }  // xd_sh_destroy()
 
 /**

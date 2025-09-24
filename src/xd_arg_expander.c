@@ -15,6 +15,7 @@
 
 #include "xd_arg_expander.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <pwd.h>
 #include <stdio.h>
@@ -23,6 +24,7 @@
 #include <unistd.h>
 
 #include "xd_list.h"
+#include "xd_shell.h"
 #include "xd_string.h"
 #include "xd_utils.h"
 #include "xd_vars.h"
@@ -31,19 +33,67 @@
 // Macros
 // ========================
 
+/**
+ * @brief Default initial capacity for `xd_state_stack`.
+ */
+#define XD_SS_DEF_CAP (32)
+
+/**
+ * @brief Maximum length of a special parameter value string (`$`, `?`, `!`, ...
+ * etc).
+ */
+#define XD_SPEC_PAR_MAX (32)
+
 // ========================
 // Typedefs
 // ========================
+
+/**
+ * @brief Represents the scanning state.
+ */
+typedef enum xd_scan_state_t {
+  XD_SS_NA,   // No State - Empty Scanning State Stack
+  XD_SS_UQ,   // Unquoted state
+  XD_SS_SQ,   // Single quoted state
+  XD_SS_DQ,   // Double quoted state
+  XD_SS_PRM,  // Parameter state
+  XD_SS_CMD,  // Command substitution state
+  XD_SS_ESC,  // Escape `\` state
+} xd_scan_state_t;
 
 // ========================
 // Function Declarations
 // ========================
 
+static void xd_ss_stack_push(xd_scan_state_t state);
+static void xd_ss_stack_pop();
+static xd_scan_state_t xd_ss_stack_top();
+static void xd_ss_stack_clear();
+static int xd_ss_stack_update(const char *arg, const char *orig_mask, int idx);
+
+static int xd_special_param_value(const char *prm_id, char *out);
+
 static char *xd_tidle_expansion(char *arg, char **orig_mask);
+static char *xd_param_expansion(char *arg, char **orig_mask);
 
 // ========================
 // Variables
 // ========================
+
+/**
+ * @brief Scanning state stack.
+ */
+static xd_scan_state_t *xd_ss_stack = NULL;
+
+/**
+ * @brief Length of `xd_ss_stack`.
+ */
+static int xd_ss_stack_length = 0;
+
+/**
+ * @brief Capacity of `xd_ss_stack`.
+ */
+static int xd_ss_stack_capacity = 0;
 
 /**
  * @brief Pointer to the original (current) arg to be expanded before copying
@@ -57,6 +107,171 @@ static char *xd_original_arg = NULL;
 // ========================
 // Function Definitions
 // ========================
+
+/**
+ * @brief Pushes the passed state to the top of the scan state stack.
+ *
+ * @param state The state to be pushed to the top of the scan state stack.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+static void xd_ss_stack_push(xd_scan_state_t state) {
+  // resize if needed
+  if (xd_ss_stack_length > xd_ss_stack_capacity - 1) {
+    int new_capacity =
+        (xd_ss_stack_capacity == 0 ? XD_SS_DEF_CAP : xd_ss_stack_capacity * 2);
+    xd_scan_state_t *ptr = (xd_scan_state_t *)realloc(
+        xd_ss_stack, sizeof(xd_scan_state_t) * new_capacity);
+    if (ptr == NULL) {
+      fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+              strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+    xd_ss_stack = ptr;
+    xd_ss_stack_capacity = new_capacity;
+  }
+  xd_ss_stack[xd_ss_stack_length++] = state;
+}  // xd_ss_stack_push()
+
+/**
+ * @brief Removes the element at the top of the scan state stack.
+ *
+ * @note If the scan state stack is empty, nothing shall occur.
+ */
+static void xd_ss_stack_pop() {
+  if (xd_ss_stack_length > 0) {
+    xd_ss_stack_length--;
+  }
+}  // xd_ss_stack_pop()
+
+/**
+ * @brief Returns the element at the top of the scan state stack or `XD_SS_NA`
+ * if the stack is empty.
+ */
+static xd_scan_state_t xd_ss_stack_top() {
+  if (xd_ss_stack_length == 0) {
+    return XD_SS_NA;
+  }
+  return xd_ss_stack[xd_ss_stack_length - 1];
+}  // xd_ss_stack_top()
+
+/**
+ * @brief Clears the scan state stack.
+ */
+static void xd_ss_stack_clear() {
+  xd_ss_stack_length = 0;
+}  // xd_ss_stack_clear()
+
+/**
+ * @brief Helper used while scanning arguments to update the current scanning
+ * state by pushing the new state to the scanning state stack.
+ *
+ * @param arg A pointer to the argument string being scanned.
+ * @param orig_mask Pointer to a pointer to a null-terminated string containing
+ * the argument's originality mask, which indicates which characters are from
+ * the original argument and which are a result of expansion. This mask will be
+ * updated when this function is called.
+ * @param idx Current position within the argument being scanned.
+ *
+ * @return `1` if the state was changed, `0` if not.
+ */
+static int xd_ss_stack_update(const char *arg, const char *orig_mask, int idx) {
+  xd_scan_state_t state = xd_ss_stack_top();
+  char chr = arg[idx];
+  int is_orig = (orig_mask[idx] == '1');
+
+  if (state == XD_SS_ESC) {
+    xd_ss_stack_pop();
+    return 1;
+  }
+
+  if (!is_orig) {
+    return 0;
+  }
+
+  if (chr == '\\' && state != XD_SS_SQ) {
+    xd_ss_stack_push(XD_SS_ESC);
+    return 1;
+  }
+
+  if (chr == '\'' && state != XD_SS_DQ) {
+    if (state == XD_SS_SQ) {
+      xd_ss_stack_pop();
+    }
+    else {
+      xd_ss_stack_push(XD_SS_SQ);
+    }
+    return 1;
+  }
+
+  if (chr == '\"' && state != XD_SS_SQ) {
+    if (state == XD_SS_DQ) {
+      xd_ss_stack_pop();
+    }
+    else {
+      xd_ss_stack_push(XD_SS_DQ);
+    }
+    return 1;
+  }
+
+  if (chr == '$' && state != XD_SS_SQ) {
+    char next = arg[idx + 1];
+    int is_next_orig = (orig_mask[idx + 1] == '1');
+    if (is_next_orig && next == '{') {
+      xd_ss_stack_push(XD_SS_PRM);
+      return 1;
+    }
+    if (is_next_orig && next == '(') {
+      xd_ss_stack_push(XD_SS_CMD);
+      return 1;
+    }
+    return 0;
+  }
+
+  if (chr == '}' && state == XD_SS_PRM) {
+    xd_ss_stack_pop();
+    return 1;
+  }
+
+  if (chr == ')' && state == XD_SS_CMD) {
+    xd_ss_stack_pop();
+    return 1;
+  }
+
+  return 0;
+}  // xd_ss_stack_update()
+
+/**
+ * @brief Retrieves the value of a special parameter ($, ?, !, etc.) and stores
+ * it as a string in the provided output buffer.
+ *
+ * @param prm_id Pointer to the null-terminated string representing the special
+ * parameter identifier (e.g., `"$"`, `"?"`, `"!"`).
+ * @param out Pointer to the output buffer where the resulting value will be
+ * stored as a null-terminated string. The buffer must be at least
+ * `XD_SPEC_PAR_MAX` bytes in size.
+ *
+ * @return `0` on success, `-1` if not a special parameter.
+ */
+static int xd_special_param_value(const char *prm_id, char *out) {
+  if (prm_id == NULL) {
+    return -1;
+  }
+
+  if (strcmp(prm_id, "$") == 0) {
+    snprintf(out, XD_SPEC_PAR_MAX, "%d", xd_sh_pid);
+    return 0;
+  }
+  if (strcmp(prm_id, "?") == 0) {
+    snprintf(out, XD_SPEC_PAR_MAX, "%d", xd_sh_last_exit_code);
+    return 0;
+  }
+  if (strcmp(prm_id, "!") == 0) {
+    snprintf(out, XD_SPEC_PAR_MAX, "%d", xd_sh_last_bg_job_pid);
+    return 0;
+  }
+  return -1;
+}  // xd_special_param_value()
 
 /**
  * @brief Performs tilde expansion on the passed argument string.
@@ -155,9 +370,189 @@ static char *xd_tidle_expansion(char *arg, char **orig_mask) {
   return expanded_arg;
 }  // xd_tidle_expansion()
 
+/**
+ * @brief Performs variable/parameter expansion on the passed argument string.
+ *
+ * @param arg Pointer to the null-terminated argument string to be expanded.
+ * @param orig_mask Pointer to a pointer to a null-terminated string containing
+ * the argument's originality mask, which indicates which characters are from
+ * the original argument and which are a result of expansion. This mask will be
+ * updated when this function is called.
+ *
+ * @return Pointer to a newly allocated string containing the result of the
+ * expansion or `NULL` on failure or if the passed pointer is `NULL`.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `free()` and passing it the returned pointer.
+ */
+static char *xd_param_expansion(char *arg, char **orig_mask) {
+  if (arg == NULL) {
+    return NULL;
+  }
+
+  xd_string_t *exp_arg_str = xd_string_create();
+  xd_string_t *orig_mask_str = xd_string_create();
+
+  char param_str[XD_SPEC_PAR_MAX];
+  int idx = 0;
+  xd_ss_stack_clear();
+  xd_ss_stack_push(XD_SS_UQ);
+  xd_ss_stack_update(arg, *orig_mask, idx);
+
+  while (arg[idx] != '\0') {
+    xd_scan_state_t state = xd_ss_stack_top();
+
+    if (state == XD_SS_ESC) {
+      xd_string_append_chr(exp_arg_str, arg[idx]);
+      xd_string_append_chr(orig_mask_str, (*orig_mask)[idx]);
+      idx++;
+      xd_string_append_chr(exp_arg_str, arg[idx]);
+      xd_string_append_chr(orig_mask_str, (*orig_mask)[idx]);
+      idx++;
+    }
+    else if (state == XD_SS_PRM) {
+      // param/var ${var}
+
+      // reached `{`
+      // store stack length to know when we reach matching '}'
+      int old_stack_len = xd_ss_stack_length - 1;
+
+      // scan until matching '}'
+      int lbrace_idx = idx + 1;
+      int rbrace_idx = lbrace_idx;
+      while (xd_ss_stack_length != old_stack_len) {
+        xd_ss_stack_update(arg, *orig_mask, ++rbrace_idx);
+      }
+
+      // temp null-terminate
+      char saved_char = arg[rbrace_idx];
+      arg[rbrace_idx] = '\0';
+
+      char *var_name = arg + lbrace_idx + 1;
+      char *value = NULL;
+      if (xd_special_param_value(var_name, param_str) == 0) {
+        value = param_str;
+      }
+      else {
+        if (!xd_vars_is_valid_name(var_name)) {
+          xd_string_destroy(exp_arg_str);
+          xd_string_destroy(orig_mask_str);
+          arg[rbrace_idx] = saved_char;
+          return NULL;  // error
+        }
+        value = xd_vars_get(var_name);
+      }
+
+      // restore
+      arg[rbrace_idx] = saved_char;
+
+      // if var is set expand to its value, if not set expand to empty (skip)
+      if (value != NULL) {
+        xd_string_append_str(exp_arg_str, value);
+        for (int i = 0; value[i] != '\0'; i++) {
+          xd_string_append_chr(orig_mask_str, '0');
+        }
+      }
+      idx = rbrace_idx + 1;
+    }
+    else if (arg[idx] == '$' && (*orig_mask)[idx] == '1' && state != XD_SS_SQ) {
+      int start_idx = idx + 1;
+      int end_idx = start_idx + 1;
+      char next = arg[start_idx];
+
+      if (next == '$' || next == '?' || next == '!') {
+        // special parameter $$, $?, $!
+
+        // temp null-terminate
+        char saved_char = arg[end_idx];
+        arg[end_idx] = '\0';
+
+        char *var_name = arg + start_idx;
+        if (xd_special_param_value(var_name, param_str) == 0) {
+          xd_string_append_str(exp_arg_str, param_str);
+          for (int i = 0; param_str[i] != '\0'; i++) {
+            xd_string_append_chr(orig_mask_str, '0');
+          }
+        }
+
+        // restore
+        arg[end_idx] = saved_char;
+
+        idx = end_idx;
+      }
+      else if (next == '_' || isalpha(next)) {
+        // normal var $var
+
+        while (arg[end_idx] == '_' || isalnum(arg[end_idx])) {
+          end_idx++;
+        }
+
+        // temp null-terminate
+        char saved_char = arg[end_idx];
+        arg[end_idx] = '\0';
+
+        char *var_name = arg + start_idx;
+        char *value = xd_vars_get(var_name);
+
+        // restore
+        arg[end_idx] = saved_char;
+
+        // if var is set expand to its value, if not set expand to empty (skip)
+        if (value != NULL) {
+          xd_string_append_str(exp_arg_str, value);
+          for (int i = 0; value[i] != '\0'; i++) {
+            xd_string_append_chr(orig_mask_str, '0');
+          }
+        }
+        idx = end_idx;
+      }
+      else {
+        // not a special param neither a valid var name - tread `$` as litteral
+        xd_string_append_chr(exp_arg_str, arg[idx]);
+        xd_string_append_chr(orig_mask_str, (*orig_mask)[idx]);
+        idx++;
+      }
+    }
+    else {
+      xd_string_append_chr(exp_arg_str, arg[idx]);
+      xd_string_append_chr(orig_mask_str, (*orig_mask)[idx]);
+      idx++;
+    }
+
+    xd_ss_stack_update(arg, *orig_mask, idx);
+  }
+
+  char *expanded_arg = xd_utils_strdup(exp_arg_str->str);
+  xd_string_destroy(exp_arg_str);
+
+  free(*orig_mask);
+  *orig_mask = xd_utils_strdup(orig_mask_str->str);
+  xd_string_destroy(orig_mask_str);
+
+  return expanded_arg;
+}  // xd_param_expansion()
+
 // ========================
 // Public Functions
 // ========================
+
+void xd_arg_expander_init() {
+  xd_ss_stack =
+      (xd_scan_state_t *)malloc(sizeof(xd_scan_state_t) * XD_SS_DEF_CAP);
+  if (xd_ss_stack == NULL) {
+    fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+            strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+  xd_ss_stack_length = 0;
+  xd_ss_stack_capacity = XD_SS_DEF_CAP;
+}  // xd_arg_expander_init()
+
+void xd_arg_expander_destroy() {
+  free(xd_ss_stack);
+}  // xd_arg_expander_destroy()
 
 xd_list_t *xd_arg_expander(char *arg) {
   xd_original_arg = arg;
@@ -172,6 +567,16 @@ xd_list_t *xd_arg_expander(char *arg) {
   // 1. Tilde expansion
   char *expanded_arg = xd_tidle_expansion(arg, &orig_mask);
   free(arg);
+  arg = expanded_arg;
+
+  // 2. Parameter expansion
+  expanded_arg = xd_param_expansion(arg, &orig_mask);
+  free(arg);
+  if (expanded_arg == NULL) {
+    fprintf(stderr, "xd-shell: %s: bad substitution\n", xd_original_arg);
+    free(orig_mask);
+    return NULL;
+  }
 
   xd_list_t *list =
       xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
