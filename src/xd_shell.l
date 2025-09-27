@@ -55,6 +55,7 @@ static int xd_alias_is_being_expanded(const char *alias_name);
 
 void yylex_initialize();
 void yylex_cleanup();
+void yylex_scan_string(const char *str);
 
 // ========================
 // Variables
@@ -573,3 +574,10 @@ void yylex_cleanup() {
   yylex_destroy();
   xd_string_destroy(xd_arg_str);
 }  // yylex_cleanup()
+
+/**
+ * @brief Wrapper for `yy_scan_string()` to be called from external source.
+ */
+void yylex_scan_string(const char *str) {
+  yy_scan_string(str);
+}  // yylex_scan_string()

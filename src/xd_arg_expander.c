@@ -17,11 +17,13 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <limits.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <wait.h>
 
 #include "xd_list.h"
 #include "xd_shell.h"
@@ -65,6 +67,12 @@ typedef enum xd_scan_state_t {
 // Function Declarations
 // ========================
 
+// flex & bison funcs
+extern void yylex_scan_string(const char *str);
+extern void yyparse_initialize();
+extern void yyparse_cleanup();
+extern int yyparse();
+
 static void xd_ss_stack_push(xd_scan_state_t state);
 static void xd_ss_stack_pop();
 static xd_scan_state_t xd_ss_stack_top();
@@ -72,9 +80,13 @@ static void xd_ss_stack_clear();
 static int xd_ss_stack_update(const char *arg, const char *orig_mask, int idx);
 
 static int xd_special_param_value(const char *prm_id, char *out);
+static void xd_exec_capture_output(char *arg, const char *orig_mask,
+                                   char *cmd_str, xd_string_t *exp_arg_str,
+                                   xd_string_t *orig_mask_str);
 
 static char *xd_tidle_expansion(char *arg, char **orig_mask);
 static char *xd_param_expansion(char *arg, char **orig_mask);
+static char *xd_command_substitution(char *arg, char **orig_mask);
 
 // ========================
 // Variables
@@ -272,6 +284,132 @@ static int xd_special_param_value(const char *prm_id, char *out) {
   }
   return -1;
 }  // xd_special_param_value()
+
+/**
+ * @brief Executes the passed command string in a forked process and captures
+ * its standard output and appends it to the passed dynamic string
+ * `exp_arg_str` and appends the originality bits which indicate non-original
+ * (expanded) characters `'0'` to the passed dynamic string `orig_mask_str`.
+ *
+ * @param arg A pointer to the argument string being expanded (containing
+ * `cmd_str`).
+ * @param orig_mask Pointer to a pointer to a null-terminated string containing
+ * the argument's originality mask, which indicates which characters are from
+ * the original argument and which are a result of expansion. This mask will be
+ * updated when this function is called.
+ * @param cmd_str A pointer to the null-terminated command string to be
+ * executed.
+ * @param exp_arg_str A pointer to the `xd_string_t` to which the output is
+ * appended.
+ * @param exp_arg_str A pointer to the `xd_string_t` to which the originality
+ * chars are appended.
+ */
+static void xd_exec_capture_output(char *arg, const char *orig_mask,
+                                   char *cmd_str, xd_string_t *exp_arg_str,
+                                   xd_string_t *orig_mask_str) {
+  if (cmd_str == NULL || *cmd_str == '\0') {
+    return;
+  }
+
+  int pipe_fd[2] = {-1, -1};
+  if (pipe(pipe_fd) == -1) {
+    fprintf(stderr, "xd-shell: pipe: %s\n", strerror(errno));
+    return;
+  }
+
+  pid_t child_pid = fork();
+  if (child_pid == -1) {
+    fprintf(stderr, "xd-shell: fork: %s\n", strerror(errno));
+    close(pipe_fd[0]);
+    close(pipe_fd[1]);
+    return;
+  }
+
+  if (child_pid == 0) {
+    free(xd_original_arg);
+    xd_string_destroy(exp_arg_str);  // not needed in child
+    xd_string_destroy(orig_mask_str);
+    free((void *)orig_mask);
+
+    close(pipe_fd[0]);  // read-end is not needed in child
+
+    // redirect output to the pipe
+    if (dup2(pipe_fd[1], STDOUT_FILENO) == -1) {
+      fprintf(stderr, "xd-shell: dup2: %s\n", strerror(errno));
+      close(pipe_fd[1]);
+      free(arg);
+      free(xd_original_arg);
+      exit(EXIT_FAILURE);
+    }
+    close(pipe_fd[1]);
+
+    // re-initialize the scanner and parser
+    yyparse_cleanup();
+    yyparse_initialize();
+
+    // setup scanner input to be the command string
+    yylex_scan_string(cmd_str);
+    free(arg);
+
+    xd_sh_is_interactive = 0;
+    yyparse();
+
+    exit(EXIT_FAILURE);  // shouldn't reach this
+  }
+
+  close(pipe_fd[1]);  // write-end is not needed in parent
+
+  int old_exp_arg_len = exp_arg_str->length;
+  char buf[LINE_MAX];
+  while (1) {
+    ssize_t byte_count = read(pipe_fd[0], buf, LINE_MAX - 1);
+    if (byte_count > 0) {
+      buf[byte_count] = '\0';
+      xd_string_append_str(exp_arg_str, buf);
+      continue;
+    }
+    if (byte_count == 0) {
+      break;  // EOF
+    }
+    if (errno == EINTR) {
+      continue;
+    }
+    break;
+  }
+
+  close(pipe_fd[0]);
+
+  // wait for child to terminate and capture its exit code
+  int wait_status = 0;
+  while (waitpid(child_pid, &wait_status, 0) == -1) {
+    if (errno == EINTR) {
+      continue;
+    }
+    break;
+  }
+  if (WIFEXITED(wait_status)) {
+    xd_sh_last_exit_code = WEXITSTATUS(wait_status);
+  }
+  else if (WIFSIGNALED(wait_status)) {
+    xd_sh_last_exit_code =
+        XD_SH_EXIT_CODE_SIGNAL_OFFSET + WTERMSIG(wait_status);
+  }
+  else if (WIFSTOPPED(wait_status)) {
+    xd_sh_last_exit_code =
+        XD_SH_EXIT_CODE_SIGNAL_OFFSET + WSTOPSIG(wait_status);
+  }
+
+  // remove trailing newlines
+  while (exp_arg_str->length > 0 &&
+         exp_arg_str->str[exp_arg_str->length - 1] == '\n') {
+    exp_arg_str->str[--exp_arg_str->length] = '\0';
+  }
+
+  // append originality bits
+  for (int i = old_exp_arg_len; i < exp_arg_str->length; i++) {
+    xd_string_append_chr(orig_mask_str, '0');
+  }
+}  // xd_exec_capture_output()
 
 /**
  * @brief Performs tilde expansion on the passed argument string.
@@ -534,6 +672,88 @@ static char *xd_param_expansion(char *arg, char **orig_mask) {
   return expanded_arg;
 }  // xd_param_expansion()
 
+/**
+ * @brief Performs command substitution on the passed argument string.
+ *
+ * @param arg Pointer to the null-terminated argument string to be expanded.
+ * @param orig_mask Pointer to a pointer to a null-terminated string containing
+ * the argument's originality mask, which indicates which characters are from
+ * the original argument and which are a result of expansion. This mask will be
+ * updated when this function is called.
+ *
+ * @return Pointer to a newly allocated string containing the result of the
+ * expansion or `NULL` on failure or if the passed pointer is `NULL`.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `free()` and passing it the returned pointer.
+ */
+static char *xd_command_substitution(char *arg, char **orig_mask) {
+  if (arg == NULL) {
+    return NULL;
+  }
+
+  xd_string_t *exp_arg_str = xd_string_create();
+  xd_string_t *orig_mask_str = xd_string_create();
+
+  int idx = 0;
+  xd_ss_stack_clear();
+  xd_ss_stack_push(XD_SS_UQ);
+  xd_ss_stack_update(arg, *orig_mask, idx);
+
+  while (arg[idx] != '\0') {
+    xd_scan_state_t state = xd_ss_stack_top();
+
+    if (state == XD_SS_CMD) {
+      // command substitution $(cmd)
+
+      // reached `(`
+      // store stack length to know when we reach matching ')'
+      int old_stack_len = xd_ss_stack_length - 1;
+
+      // scan until matching ')'
+      int lparen_idx = idx + 1;
+      int rparen_idx = lparen_idx;
+      while (xd_ss_stack_length != old_stack_len) {
+        xd_ss_stack_update(arg, *orig_mask, ++rparen_idx);
+      }
+
+      // temp newline and null-terminate
+      char saved_char1 = arg[rparen_idx];
+      char saved_char2 = arg[rparen_idx + 1];
+      arg[rparen_idx] = '\n';
+      arg[rparen_idx + 1] = '\0';
+
+      char *cmd_str = arg + lparen_idx + 1;
+      xd_exec_capture_output(arg, *orig_mask, cmd_str, exp_arg_str,
+                             orig_mask_str);
+
+      // restore
+      arg[rparen_idx] = saved_char1;
+      arg[rparen_idx + 1] = saved_char2;
+
+      idx = rparen_idx + 1;
+    }
+    else {
+      xd_string_append_chr(exp_arg_str, arg[idx]);
+      xd_string_append_chr(orig_mask_str, (*orig_mask)[idx]);
+      idx++;
+    }
+
+    xd_ss_stack_update(arg, *orig_mask, idx);
+  }
+
+  char *expanded_arg = xd_utils_strdup(exp_arg_str->str);
+  xd_string_destroy(exp_arg_str);
+
+  free(*orig_mask);
+  *orig_mask = xd_utils_strdup(orig_mask_str->str);
+  xd_string_destroy(orig_mask_str);
+
+  return expanded_arg;
+}  // xd_command_substitution()
+
 // ========================
 // Public Functions
 // ========================
@@ -574,6 +794,16 @@ xd_list_t *xd_arg_expander(char *arg) {
   free(arg);
   if (expanded_arg == NULL) {
     fprintf(stderr, "xd-shell: %s: bad substitution\n", xd_original_arg);
+    free(orig_mask);
+    return NULL;
+  }
+  arg = expanded_arg;
+
+  // 3. Command substitution
+  expanded_arg = xd_command_substitution(arg, &orig_mask);
+  free(arg);
+  if (expanded_arg == NULL) {
+    fprintf(stderr, "xd-shell: %s: cmd substitution error\n", xd_original_arg);
     free(orig_mask);
     return NULL;
   }

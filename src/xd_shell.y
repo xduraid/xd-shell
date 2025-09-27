@@ -391,6 +391,7 @@ void yyparse_cleanup() {
   xd_job_destroy(xd_current_job);
   xd_command_destroy(xd_current_command);
   xd_string_destroy(xd_command_str);
+  xd_current_command = NULL;
 }  // yyparse_cleanup()
 
 /**
