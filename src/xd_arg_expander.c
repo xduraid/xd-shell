@@ -46,6 +46,11 @@
  */
 #define XD_SPEC_PAR_MAX (32)
 
+/**
+ * @brief The characters at which word splitting will occur.
+ */
+#define XD_IFS " \t\n"
+
 // ========================
 // Typedefs
 // ========================
@@ -87,6 +92,8 @@ static void xd_exec_capture_output(char *arg, const char *orig_mask,
 static char *xd_tidle_expansion(char *arg, char **orig_mask);
 static char *xd_param_expansion(char *arg, char **orig_mask);
 static char *xd_command_substitution(char *arg, char **orig_mask);
+static xd_list_t *xd_word_splitting(char *arg, char *orig_mask,
+                                    xd_list_t **orig_mask_list);
 
 // ========================
 // Variables
@@ -754,6 +761,84 @@ static char *xd_command_substitution(char *arg, char **orig_mask) {
   return expanded_arg;
 }  // xd_command_substitution()
 
+/**
+ * @brief Performs word splitting on the passed argument string.
+ *
+ * @param arg Pointer to the null-terminated argument string to be split.
+ * @param orig_mask Pointer to a null-terminated string containing
+ * the argument's originality mask, which indicates which characters are from
+ * the original argument and which are a result of expansion.
+ * @param orig_mask_list Output parameter, pointer to a newly allocated
+ * `xd_list_t` containing the splitted originality mask.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing the splitted
+ * argument or `NULL` on failure or if the passed pointer is `NULL`.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_list_destroy()` on both the returned lists.
+ */
+static xd_list_t *xd_word_splitting(char *arg, char *orig_mask,
+                                    xd_list_t **orig_mask_list) {
+  if (arg == NULL) {
+    return NULL;
+  }
+
+  xd_list_t *arg_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+  xd_list_t *mask_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+
+  int start_idx = 0;
+  int end_idx = 0;
+  xd_ss_stack_clear();
+  xd_ss_stack_push(XD_SS_UQ);
+  xd_ss_stack_update(arg, orig_mask, end_idx);
+
+  while (arg[end_idx] != '\0') {
+    xd_scan_state_t state = xd_ss_stack_top();
+
+    // reached non-quoted IFS character
+    if (strchr(XD_IFS, arg[end_idx]) != NULL && state != XD_SS_SQ &&
+        state != XD_SS_DQ) {
+      // temp null-terminate
+      char saved_char1 = arg[end_idx];
+      char saved_char2 = orig_mask[end_idx];
+      arg[end_idx] = '\0';
+      orig_mask[end_idx] = '\0';
+
+      xd_list_add_last(arg_list, arg + start_idx);
+      xd_list_add_last(mask_list, orig_mask + start_idx);
+
+      // restore
+      arg[end_idx] = saved_char1;
+      orig_mask[end_idx] = saved_char2;
+
+      // skip additional IFS chars
+      while (arg[end_idx] != '\0' && strchr(XD_IFS, arg[end_idx]) != NULL) {
+        end_idx++;
+      }
+      start_idx = end_idx;
+      xd_ss_stack_update(arg, orig_mask, end_idx);
+    }
+    else {
+      end_idx++;
+      xd_ss_stack_update(arg, orig_mask, end_idx);
+    }
+  }
+
+  if (start_idx != end_idx) {
+    xd_list_add_last(arg_list, arg + start_idx);
+    xd_list_add_last(mask_list, orig_mask + start_idx);
+  }
+
+  *orig_mask_list = mask_list;
+  return arg_list;
+}  // xd_word_splitting()
+
 // ========================
 // Public Functions
 // ========================
@@ -807,14 +892,19 @@ xd_list_t *xd_arg_expander(char *arg) {
     free(orig_mask);
     return NULL;
   }
+  arg = expanded_arg;
 
-  xd_list_t *list =
-      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
-                     xd_utils_str_comp_func);
-  xd_list_add_last(list, expanded_arg);
-
-  free(expanded_arg);
+  // 4. Word splitting
+  xd_list_t *orig_mask_list = NULL;
+  xd_list_t *exp_arg_list = xd_word_splitting(arg, orig_mask, &orig_mask_list);
+  free(arg);
   free(orig_mask);
+  if (exp_arg_list == NULL) {
+    fprintf(stderr, "xd-shell: %s: word splitting error\n", xd_original_arg);
+    return NULL;
+  }
 
-  return list;
+  xd_list_destroy(orig_mask_list);
+
+  return exp_arg_list;
 }  // xd_arg_expander()
