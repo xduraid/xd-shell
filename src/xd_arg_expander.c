@@ -17,6 +17,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <glob.h>
 #include <limits.h>
 #include <pwd.h>
 #include <stdio.h>
@@ -78,6 +79,8 @@ extern void yyparse_initialize();
 extern void yyparse_cleanup();
 extern int yyparse();
 
+static int xd_glob_sort_func(const void *first, const void *second);
+
 static void xd_ss_stack_push(xd_scan_state_t state);
 static void xd_ss_stack_pop();
 static xd_scan_state_t xd_ss_stack_top();
@@ -94,6 +97,8 @@ static char *xd_param_expansion(char *arg, char **orig_mask);
 static char *xd_command_substitution(char *arg, char **orig_mask);
 static xd_list_t *xd_word_splitting(char *arg, char *orig_mask,
                                     xd_list_t **orig_mask_list);
+static int xd_filename_expansion(xd_list_t **arg_list,
+                                 xd_list_t **orig_mask_list);
 
 // ========================
 // Variables
@@ -126,6 +131,22 @@ static char *xd_original_arg = NULL;
 // ========================
 // Function Definitions
 // ========================
+
+/**
+ * @brief Helper comparison function for sorting path strings resulting from
+ * `glob()`.
+ *
+ * @param first Pointer to the first element being compared.
+ * @param second Pointer to the second element being compared.
+ *
+ * @return A negative value if first should come before second, a positive
+ * value if second should come before first, zero if both are equal.
+ */
+static int xd_glob_sort_func(const void *first, const void *second) {
+  const char *path1 = *(const char **)first;
+  const char *path2 = *(const char **)second;
+  return strcasecmp(path1, path2);
+}  // xd_glob_sort_func()
 
 /**
  * @brief Pushes the passed state to the top of the scan state stack.
@@ -839,6 +860,86 @@ static xd_list_t *xd_word_splitting(char *arg, char *orig_mask,
   return arg_list;
 }  // xd_word_splitting()
 
+/**
+ * @brief Performs filename expansion (globbing) on the passed arguments.
+ *
+ * @param arg_list Pointer to a pointer to the `xd_list_t` structure containing
+ * the arguments resulting from word splitting, it will be updated when this
+ * function is called to store the result of expansions.
+ * @param orig_mask_list Pointer to a pointer to the `xd_list_t` structure
+ * containing the argument masks resulting from word splitting, it will be
+ * updated when this function is called to store masks after after filename
+ * expansion.
+ *
+ * @return `0` on success or `-1` on failure or if the passed pointer is `NULL`.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+static int xd_filename_expansion(xd_list_t **arg_list,
+                                 xd_list_t **orig_mask_list) {
+  if (*arg_list == NULL) {
+    return -1;
+  }
+
+  xd_list_t *new_arg_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+  xd_list_t *new_mask_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+
+  xd_string_t *mask_str = xd_string_create();
+  glob_t glob_result;
+
+  xd_list_node_t *arg_node = (*arg_list)->head;
+  xd_list_node_t *mask_node = (*orig_mask_list)->head;
+  for (int i = 0; i < (*arg_list)->length; i++) {
+    int glob_ret =
+        glob(arg_node->data, GLOB_BRACE | GLOB_NOSORT, NULL, &glob_result);
+
+    if (glob_ret == 0) {
+      // sort then add matches
+      qsort((void *)glob_result.gl_pathv, glob_result.gl_pathc, sizeof(char *),
+            xd_glob_sort_func);
+      for (size_t j = 0; j < glob_result.gl_pathc; j++) {
+        xd_string_clear(mask_str);
+
+        char *path = glob_result.gl_pathv[j];
+        for (int k = 0; path[k] != '\0'; k++) {
+          xd_string_append_chr(mask_str, '0');
+        }
+        xd_list_add_last(new_arg_list, path);
+        xd_list_add_last(new_mask_list, mask_str->str);
+      }
+    }
+    else if (glob_ret == GLOB_NOMATCH) {
+      // no match leave as is
+      xd_list_add_last(new_arg_list, arg_node->data);
+      xd_list_add_last(new_mask_list, mask_node->data);
+    }
+    else {
+      // error
+      xd_list_destroy(new_arg_list);
+      xd_list_destroy(new_mask_list);
+      xd_string_destroy(mask_str);
+      return -1;
+    }
+
+    globfree(&glob_result);
+    arg_node = arg_node->next;
+    mask_node = mask_node->next;
+  }
+
+  xd_string_destroy(mask_str);
+  xd_list_destroy(*arg_list);
+  xd_list_destroy(*orig_mask_list);
+
+  *arg_list = new_arg_list;
+  *orig_mask_list = new_mask_list;
+
+  return 0;
+}  // xd_filename_expansion()
+
 // ========================
 // Public Functions
 // ========================
@@ -901,6 +1002,15 @@ xd_list_t *xd_arg_expander(char *arg) {
   free(orig_mask);
   if (exp_arg_list == NULL) {
     fprintf(stderr, "xd-shell: %s: word splitting error\n", xd_original_arg);
+    return NULL;
+  }
+
+  // 5. Filename expansion
+  if (xd_filename_expansion(&exp_arg_list, &orig_mask_list) == -1) {
+    xd_list_destroy(exp_arg_list);
+    xd_list_destroy(orig_mask_list);
+    fprintf(stderr, "xd-shell: %s: filename expansion error\n",
+            xd_original_arg);
     return NULL;
   }
 
