@@ -99,6 +99,8 @@ static xd_list_t *xd_word_splitting(char *arg, char *orig_mask,
                                     xd_list_t **orig_mask_list);
 static int xd_filename_expansion(xd_list_t **arg_list,
                                  xd_list_t **orig_mask_list);
+static int xd_quote_removal(xd_list_t **arg_list,
+                            const xd_list_t *orig_mask_list);
 
 // ========================
 // Variables
@@ -940,6 +942,84 @@ static int xd_filename_expansion(xd_list_t **arg_list,
   return 0;
 }  // xd_filename_expansion()
 
+/**
+ * @brief Performs quote removal and escape character handling on the passed
+ * arguments.
+ *
+ * @param arg_list Pointer to a pointer to the `xd_list_t` structure containing
+ * the arguments resulting from word splitting, it will be updated when this
+ * function is called to store the result.
+ * @param orig_mask_list Pointer to a pointer to the `xd_list_t` structure
+ * containing the argument masks resulting from word splitting.
+ *
+ * @return `0` on success or `-1` on failure or if the passed pointer is `NULL`.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+static int xd_quote_removal(xd_list_t **arg_list,
+                            const xd_list_t *orig_mask_list) {
+  if (arg_list == NULL || orig_mask_list == NULL) {
+    return -1;
+  }
+
+  xd_list_t *new_arg_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+
+  xd_list_node_t *arg_node = (*arg_list)->head;
+  xd_list_node_t *mask_node = orig_mask_list->head;
+  xd_string_t *exp_arg_str = xd_string_create();
+
+  for (int i = 0; i < (*arg_list)->length; i++) {
+    char *arg = arg_node->data;
+    char *orig_mask = mask_node->data;
+
+    xd_string_clear(exp_arg_str);
+
+    int idx = 0;
+    xd_ss_stack_clear();
+    xd_ss_stack_push(XD_SS_UQ);
+    xd_ss_stack_update(arg, orig_mask, idx);
+
+    xd_scan_state_t state = XD_SS_UQ;
+    xd_scan_state_t prev_state;
+
+    while (arg[idx] != '\0') {
+      prev_state = state;
+      state = xd_ss_stack_top();
+
+      if (state == XD_SS_ESC) {
+        xd_ss_stack_update(arg, orig_mask, idx++);
+        state = xd_ss_stack_top();
+        if (state == XD_SS_DQ && strchr("$\"\\\n", arg[idx]) == NULL) {
+          xd_string_append_chr(exp_arg_str, '\\');
+        }
+        xd_string_append_chr(exp_arg_str, arg[idx++]);
+      }
+      else if (((state == XD_SS_SQ || prev_state == XD_SS_SQ) &&
+                arg[idx] == '\'') ||
+               ((state == XD_SS_DQ || prev_state == XD_SS_DQ) &&
+                arg[idx] == '"')) {
+        idx++;
+      }
+      else {
+        xd_string_append_chr(exp_arg_str, arg[idx++]);
+      }
+
+      xd_ss_stack_update(arg, orig_mask, idx);
+    }
+
+    xd_list_add_last(new_arg_list, exp_arg_str->str);
+    arg_node = arg_node->next;
+    mask_node = mask_node->next;
+  }
+
+  xd_string_destroy(exp_arg_str);
+  xd_list_destroy(*arg_list);
+  *arg_list = new_arg_list;
+  return 0;
+}  // xd_quote_removal()
+
 // ========================
 // Public Functions
 // ========================
@@ -1014,7 +1094,14 @@ xd_list_t *xd_arg_expander(char *arg) {
     return NULL;
   }
 
-  xd_list_destroy(orig_mask_list);
+  // 6. Quote removal and escape character handling
+  if (xd_quote_removal(&exp_arg_list, orig_mask_list) == -1) {
+    xd_list_destroy(exp_arg_list);
+    xd_list_destroy(orig_mask_list);
+    fprintf(stderr, "xd-shell: %s: quote removal error\n", xd_original_arg);
+    return NULL;
+  }
 
+  xd_list_destroy(orig_mask_list);
   return exp_arg_list;
 }  // xd_arg_expander()
