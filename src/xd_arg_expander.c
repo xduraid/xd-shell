@@ -382,6 +382,8 @@ static void xd_exec_capture_output(char *arg, const char *orig_mask,
     free(arg);
 
     xd_sh_is_interactive = 0;
+    xd_sh_is_subshell = 1;
+
     yyparse();
 
     exit(EXIT_FAILURE);  // shouldn't reach this

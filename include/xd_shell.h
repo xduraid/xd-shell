@@ -78,6 +78,11 @@
 extern int xd_sh_is_interactive;
 
 /**
+ * @brief Indicates whether the shell is a sub-shell (non-zero) or not (zero).
+ */
+extern int xd_sh_is_subshell;
+
+/**
  * @brief The shell's input prompt string.
  */
 extern char xd_sh_prompt[];

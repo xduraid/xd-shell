@@ -60,6 +60,7 @@ extern void yyparse_cleanup();
 // ========================
 
 int xd_sh_is_interactive = 0;
+int xd_sh_is_subshell = 0;
 char xd_sh_prompt[XD_SH_PROMPT_MAX_LENGTH] = {0};
 char xd_sh_path[PATH_MAX] = {0};
 pid_t xd_sh_pid = 0;

@@ -139,13 +139,13 @@ static int xd_reset_signal_handlers() {
   if (signal(SIGQUIT, SIG_DFL) == SIG_ERR) {
     return -1;
   }
-  if (signal(SIGTSTP, SIG_DFL) == SIG_ERR) {
+  if (!xd_sh_is_subshell && signal(SIGTSTP, SIG_DFL) == SIG_ERR) {
     return -1;
   }
-  if (signal(SIGTTIN, SIG_DFL) == SIG_ERR) {
+  if (!xd_sh_is_subshell && signal(SIGTTIN, SIG_DFL) == SIG_ERR) {
     return -1;
   }
-  if (signal(SIGTTOU, SIG_DFL) == SIG_ERR) {
+  if (!xd_sh_is_subshell && signal(SIGTTOU, SIG_DFL) == SIG_ERR) {
     return -1;
   }
   if (signal(SIGINT, SIG_DFL) == SIG_ERR) {
