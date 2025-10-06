@@ -64,6 +64,11 @@
  */
 #define XD_SH_EXIT_CODE_USAGE (2)
 
+/**
+ * @brief The default history file name.
+ */
+#define XD_SH_DEF_HISTFILE_NAME ".xdsh_history"
+
 // ========================
 // Function Declarations
 // ========================

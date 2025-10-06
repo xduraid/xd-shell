@@ -17,6 +17,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +33,7 @@
 #include "xd_command.h"
 #include "xd_job.h"
 #include "xd_jobs.h"
+#include "xd_readline.h"
 #include "xd_vars.h"
 
 // ========================
@@ -124,12 +126,45 @@ static void xd_sh_init() {
     exit(EXIT_FAILURE);
   }
   xd_vars_put("SHELL", xd_sh_path, 1);
+
+  // setup `HISTFILE` variable and load history from file
+  if (xd_sh_is_interactive) {
+    char path[PATH_MAX];
+    const char *histfile = xd_vars_get("HISTFILE");
+    if (histfile == NULL) {
+      const char *HOME = xd_vars_get("HOME");
+      if (HOME == NULL) {
+        struct passwd *pwd = getpwuid(getuid());
+        if (pwd != NULL) {
+          HOME = pwd->pw_dir;
+        }
+      }
+      if (HOME != NULL) {
+        snprintf(path, PATH_MAX, "%s/%s", HOME, XD_SH_DEF_HISTFILE_NAME);
+      }
+      else {
+        snprintf(path, PATH_MAX, "%s", XD_SH_DEF_HISTFILE_NAME);
+      }
+    }
+    else {
+      snprintf(path, PATH_MAX, "%s", histfile);
+    }
+    xd_vars_put("HISTFILE", path, 0);
+    xd_readline_history_load_from_file(path);
+  }
 }  // xd_sh_init()
 
 /**
  * @brief Destructor, runs before exit to cleanup after the shell.
  */
 static void xd_sh_destroy() {
+  // save history to file
+  if (xd_sh_is_interactive && getpid() == xd_sh_pid) {
+    char *histfile = xd_vars_get("HISTFILE");
+    if (histfile != NULL) {
+      xd_readline_history_save_to_file(histfile, 0);
+    }
+  }
   yyparse_cleanup();
   xd_jobs_destroy();
   xd_aliases_destroy();
