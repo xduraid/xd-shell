@@ -108,11 +108,6 @@ static void xd_sh_init() {
     }
 
     strncpy(xd_sh_prompt, "\e[0;94mxd-shell\e[0m$ ", XD_SH_PROMPT_MAX_LENGTH);
-
-    if (tcgetattr(STDIN_FILENO, &xd_sh_tty_modes) == -1) {
-      fprintf(stderr, "xd_readline: failed to get tty attributes\n");
-      exit(EXIT_FAILURE);
-    }
   }
 
   xd_sh_pid = pid;

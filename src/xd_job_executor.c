@@ -637,6 +637,8 @@ static void xd_failure_cleanup() {
   xd_jobs_wait(xd_job);
   if (xd_sh_is_interactive) {
     xd_jobs_put_in_foreground(xd_sh_pgid);
+  }
+  if (isatty(STDIN_FILENO)) {
     while (tcsetattr(STDIN_FILENO, TCSADRAIN, &xd_sh_tty_modes) == -1) {
       if (errno == EINTR) {
         continue;
@@ -653,7 +655,7 @@ static void xd_failure_cleanup() {
 // ========================
 
 void xd_job_executor(xd_job_t *job) {
-  if (xd_sh_is_interactive) {
+  if (isatty(STDIN_FILENO)) {
     tcgetattr(STDIN_FILENO, &xd_sh_tty_modes);
   }
 
@@ -749,11 +751,13 @@ void xd_job_executor(xd_job_t *job) {
       }
     }
 
-    while (tcsetattr(STDIN_FILENO, TCSADRAIN, &xd_sh_tty_modes) == -1) {
-      if (errno == EINTR) {
-        continue;
+    if (isatty(STDIN_FILENO)) {
+      while (tcsetattr(STDIN_FILENO, TCSADRAIN, &xd_sh_tty_modes) == -1) {
+        if (errno == EINTR) {
+          continue;
+        }
+        break;
       }
-      break;
     }
   }
   else {
