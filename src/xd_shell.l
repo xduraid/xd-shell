@@ -15,6 +15,7 @@
 
 %{
 
+#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,6 +66,11 @@ void yylex_scan_string(const char *str);
  * @brief Current command being parsed.
  */
 extern xd_command_t *xd_current_command;
+
+/**
+ * @brief Copy of the last interactive input line returned by `xd_readline()`.
+ */
+static char *xd_last_interactive_line = NULL;
 
 /**
  * @brief Pointer to the next input character in interactive mode.
@@ -488,14 +494,30 @@ static int xd_getc() {
       xd_readline_prompt = XD_SH_PROMPT2;
     }
     xd_sh_readline_running = 1;
-    xd_interactive_next_char = xd_readline();
+    char *input_line = xd_readline();
     xd_sh_readline_running = 0;
-    if (xd_interactive_next_char == NULL) {
+    if (input_line == NULL) {
       if (errno == EINTR) {
         xd_input_interrupted = 1;
       }
       return EOF;
     }
+
+    int input_line_len = strlen(input_line);
+    if (xd_last_interactive_line == NULL) {
+      xd_last_interactive_line = xd_readline_history_get(-1);
+    }
+
+    // add non-duplicate and non-empty input lines to history
+    if (!isspace(*input_line) && (xd_last_interactive_line == NULL ||
+                                  strncmp(input_line, xd_last_interactive_line,
+                                          input_line_len - 1) != 0)) {
+      xd_readline_history_add(input_line);
+      free(xd_last_interactive_line);
+      xd_last_interactive_line = xd_utils_strdup(input_line);
+    }
+
+    xd_interactive_next_char = input_line;
   }
   return *xd_interactive_next_char++;
 }  // xd_getc()
@@ -573,6 +595,8 @@ void yylex_cleanup() {
   xd_list_destroy(xd_alias_expansion_stack);
   yylex_destroy();
   xd_string_destroy(xd_arg_str);
+  free(xd_last_interactive_line);
+  xd_last_interactive_line = NULL;
 }  // yylex_cleanup()
 
 /**
