@@ -18,6 +18,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,7 @@
 
 #include "xd_aliases.h"
 #include "xd_jobs.h"
+#include "xd_readline.h"
 #include "xd_shell.h"
 #include "xd_signals.h"
 #include "xd_utils.h"
@@ -114,6 +116,10 @@ static void xd_echo_help();
 static int xd_echo(int argc, char **argv);
 static int xd_echo_print_escaped(const char *str);
 
+static void xd_history_usage();
+static void xd_history_help();
+static int xd_history(int argc, char **argv);
+
 static void xd_exit_usage();
 static void xd_exit_help();
 static int xd_exit(int argc, char **argv);
@@ -139,6 +145,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"cd",       xd_cd      },
     {"pwd",      xd_pwd     },
     {"echo",     xd_echo    },
+    {"history",  xd_history },
     {"exit",     xd_exit    },
 };
 
@@ -1401,6 +1408,134 @@ static int xd_echo_print_escaped(const char *str) {
   }
   return 0;
 }  // xd_echo_print_escaped()
+
+/**
+ * @brief Prints usage information for the `history` builtin.
+ */
+static void xd_history_usage() {
+  fprintf(stderr, "history: usage: history [-c] or history -arw [filename]\n");
+}  // xd_history_usage()
+
+/**
+ * @brief Prints detailed help information for the `history` builtin.
+ */
+static void xd_history_help() {
+  printf(
+      "history: history [-c] or history -arw [filename]\n"
+      "    Display or manipulate the history list.\n"
+      "\n"
+      "    Options:\n"
+      "      -c        clear the history list by deleting all of the entries\n"
+      "      -a        append history lines from this session to the history "
+      "file\n"
+      "      -r        read the history file and append the contents to the "
+      "history list\n"
+      "      -w        write the current history to the history file\n"
+      "\n"
+      "    If filename is given, it is used as the history file.  Otherwise,\n"
+      "    if $HISTFILE has a value, that is used, else ~/.bash_history.\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns success unless invalid option is given or error occurs.\n");
+}  // xd_history_help()
+
+/**
+ * @brief Executor of `history` builtin command.
+ */
+static int xd_history(int argc, char **argv) {
+  if (!xd_sh_is_interactive) {
+    fprintf(stderr, "xd-shell: history: non-interactive shell\n");
+    return EXIT_FAILURE;
+  }
+
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_history_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int clear_flag = 0;
+  int opt_char = '?';
+  char *file_arg = NULL;
+
+  int opt;
+  while ((opt = getopt(argc, argv, "+ca::r::w::")) != -1) {
+    switch (opt) {
+      case 'c':
+        clear_flag = 1;
+        break;
+      case 'a':
+      case 'r':
+      case 'w':
+        opt_char = opt;
+        file_arg = optarg;
+        if (optind < argc && argv[optind][0] != '-') {
+          file_arg = argv[optind++];
+        }
+        break;
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: history: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_history_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  if (argc == 1) {
+    xd_readline_history_print();
+    return EXIT_SUCCESS;
+  }
+
+  if (clear_flag) {
+    xd_readline_history_clear();
+  }
+
+  char path[PATH_MAX];
+  if (file_arg == NULL) {
+    const char *histfile = xd_vars_get("HISTFILE");
+    if (histfile == NULL) {
+      const char *HOME = xd_vars_get("HOME");
+      if (HOME == NULL) {
+        struct passwd *pwd = getpwuid(getuid());
+        if (pwd != NULL) {
+          HOME = pwd->pw_dir;
+        }
+      }
+      if (HOME != NULL) {
+        snprintf(path, PATH_MAX, "%s/%s", HOME, XD_SH_DEF_HISTFILE_NAME);
+      }
+      else {
+        snprintf(path, PATH_MAX, "%s", XD_SH_DEF_HISTFILE_NAME);
+      }
+    }
+    else {
+      snprintf(path, PATH_MAX, "%s", histfile);
+    }
+  }
+  else {
+    snprintf(path, PATH_MAX, "%s", file_arg);
+  }
+
+  int ret = 0;
+  switch (opt_char) {
+    case 'a':
+      ret = xd_readline_history_save_to_file(path, 1);
+      break;
+    case 'w':
+      ret = xd_readline_history_save_to_file(path, 0);
+      break;
+    case 'r':
+      ret = xd_readline_history_load_from_file(path);
+      break;
+    default:
+      ret = -1;
+      break;
+  }
+
+  return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+}  // xd_history()
 
 /**
  * @brief Prints usage information for the `exit` builtin.
