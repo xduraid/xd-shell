@@ -418,6 +418,12 @@ static int xd_fg(int argc, char **argv) {
     return EXIT_FAILURE;
   }
 
+  struct termios shell_saved_modes;
+  int shell_saved_modes_valid = 0;
+  if (tcgetattr(STDIN_FILENO, &shell_saved_modes) == 0) {
+    shell_saved_modes_valid = 1;
+  }
+
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--help") == 0) {
       xd_fg_help();
@@ -502,11 +508,30 @@ static int xd_fg(int argc, char **argv) {
     }
   }
 
-  while (tcsetattr(STDIN_FILENO, TCSADRAIN, &xd_sh_tty_modes) == -1) {
-    if (errno == EINTR) {
-      continue;
+  if (isatty(STDIN_FILENO)) {
+    // Adopt terminal settings left by the resumed job so tools like `stty`
+    // keep their changes when control returns to the shell.
+    struct termios current_modes;
+    if (tcgetattr(STDIN_FILENO, &current_modes) == -1) {
+      if (shell_saved_modes_valid) {
+        while (tcsetattr(STDIN_FILENO, TCSADRAIN, &shell_saved_modes) == -1) {
+          if (errno == EINTR) {
+            continue;
+          }
+          break;
+        }
+        xd_sh_tty_modes = shell_saved_modes;
+      }
     }
-    break;
+    else {
+      xd_sh_tty_modes = current_modes;
+      while (tcsetattr(STDIN_FILENO, TCSADRAIN, &xd_sh_tty_modes) == -1) {
+        if (errno == EINTR) {
+          continue;
+        }
+        break;
+      }
+    }
   }
 
   return exit_status;

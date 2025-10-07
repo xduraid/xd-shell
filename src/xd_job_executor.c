@@ -655,8 +655,14 @@ static void xd_failure_cleanup() {
 // ========================
 
 void xd_job_executor(xd_job_t *job) {
+  struct termios saved_tty_modes;
+  int saved_tty_modes_valid = 0;
+
   if (isatty(STDIN_FILENO)) {
-    tcgetattr(STDIN_FILENO, &xd_sh_tty_modes);
+    if (tcgetattr(STDIN_FILENO, &xd_sh_tty_modes) == 0) {
+      saved_tty_modes = xd_sh_tty_modes;
+      saved_tty_modes_valid = 1;
+    }
   }
 
   xd_job = job;
@@ -752,11 +758,28 @@ void xd_job_executor(xd_job_t *job) {
     }
 
     if (isatty(STDIN_FILENO)) {
-      while (tcsetattr(STDIN_FILENO, TCSADRAIN, &xd_sh_tty_modes) == -1) {
-        if (errno == EINTR) {
-          continue;
+      // Adopt terminal settings left by the job so changes from tools like
+      // `stty` persist when returning to the shell.
+      struct termios current_modes;
+      if (tcgetattr(STDIN_FILENO, &current_modes) == -1) {
+        if (saved_tty_modes_valid) {
+          while (tcsetattr(STDIN_FILENO, TCSADRAIN, &saved_tty_modes) == -1) {
+            if (errno == EINTR) {
+              continue;
+            }
+            break;
+          }
+          xd_sh_tty_modes = saved_tty_modes;
         }
-        break;
+      }
+      else {
+        xd_sh_tty_modes = current_modes;
+        while (tcsetattr(STDIN_FILENO, TCSADRAIN, &xd_sh_tty_modes) == -1) {
+          if (errno == EINTR) {
+            continue;
+          }
+          break;
+        }
       }
     }
   }
