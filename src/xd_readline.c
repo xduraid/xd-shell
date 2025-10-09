@@ -1413,8 +1413,11 @@ static void xd_input_handle_tab() {
 
   // get the current word
   int idx = xd_input_cursor;
+  if (idx > 0) {
+    idx--;
+  }
   while (idx > 0 &&
-         strchr(XD_RL_TAB_COMP_DELIMITERS, xd_input_buffer[idx - 1]) == NULL) {
+         strchr(XD_RL_TAB_COMP_DELIMITERS, xd_input_buffer[idx]) == NULL) {
     idx--;
   }
   int word_length = xd_input_cursor - idx;
