@@ -31,6 +31,7 @@
 #include "xd_aliases.h"
 #include "xd_arg_expander.h"
 #include "xd_command.h"
+#include "xd_comp_generator.h"
 #include "xd_job.h"
 #include "xd_jobs.h"
 #include "xd_readline.h"
@@ -127,8 +128,8 @@ static void xd_sh_init() {
   }
   xd_vars_put("SHELL", xd_sh_path, 1);
 
-  // setup `HISTFILE` variable and load history from file
   if (xd_sh_is_interactive) {
+    // setup `HISTFILE` variable and load history from file
     char path[PATH_MAX];
     const char *histfile = xd_vars_get("HISTFILE");
     if (histfile == NULL) {
@@ -151,6 +152,9 @@ static void xd_sh_init() {
     }
     xd_vars_put("HISTFILE", path, 0);
     xd_readline_history_load_from_file(path);
+
+    // setup tab-completion function
+    xd_readline_completions_generator = xd_completions_generator;
   }
 }  // xd_sh_init()
 

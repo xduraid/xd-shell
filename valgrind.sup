@@ -1,0 +1,18 @@
+{
+  <getpwent()>
+  Memcheck:Leak
+  match-leak-kinds: reachable
+  fun:malloc
+  fun:nss_files_global_allocate
+  fun:__libc_allocate_once_slow
+  fun:allocate_once
+  fun:__nss_files_data_get
+  fun:__nss_files_data_setent
+  fun:__nss_setent
+  fun:setpwent
+  fun:xd_username_completions_generator
+  fun:xd_tilde_completions_generator
+  fun:xd_completions_generator
+  fun:xd_input_handle_tab
+  fun:xd_input_handle_control
+}

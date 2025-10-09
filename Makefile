@@ -29,6 +29,7 @@ CC_DEBUG_FLAGS = -g -O0 -DDEBUG
 VALGRIND = valgrind
 VALGRIND_FLAGS = --leak-check=full \
 								 --show-leak-kinds=all \
+								 --suppressions=valgrind.sup \
 								 --errors-for-leak-kinds=all \
 								 --track-origins=yes \
 								 --track-fds=yes \
