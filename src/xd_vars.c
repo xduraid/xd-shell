@@ -324,6 +324,26 @@ void xd_vars_destroy_envp(char **envp) {
   free((void *)envp);
 }  // xd_vars_destroy_envp()
 
+xd_list_t *xd_vars_names_list() {
+  if (xd_vars == NULL) {
+    return NULL;
+  }
+
+  xd_list_t *name_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+
+  for (int i = 0; i < xd_vars->bucket_count; i++) {
+    xd_list_t *bucket = xd_vars->buckets[i];
+    for (xd_list_node_t *node = bucket->head; node != NULL; node = node->next) {
+      xd_bucket_entry_t *entry = node->data;
+      char *name = entry->key;
+      xd_list_add_last(name_list, name);
+    }
+  }
+  return name_list;
+}  // xd_vars_get_completions()
+
 int xd_vars_is_valid_name(const char *name) {
   if (name == NULL || *name == '\0') {
     return 0;

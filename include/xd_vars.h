@@ -13,6 +13,8 @@
  * ==============================================================================
  */
 
+#include "xd_list.h"
+
 /**
  * @brief Initializes the variables hash map and loads the environment.
  *
@@ -113,6 +115,20 @@ char **xd_vars_create_envp();
  * @note If the passed pointer is `NULL`, no action shall occur.
  */
 void xd_vars_destroy_envp(char **envp);
+
+/**
+ * @brief Returns a list containing the names (identifiers) of all defined
+ * variables.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing the identifiers
+ * of all defined variables or `NULL` on failure.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_list_destroy()` and passing it the returned pointer.
+ */
+xd_list_t *xd_vars_names_list();
 
 /**
  * @brief Checks if the passed string is a valid variable name.

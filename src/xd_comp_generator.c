@@ -42,6 +42,8 @@ static int xd_str_cmp(const void *first, const void *second);
 static xd_list_t *xd_username_completions_generator(const char *partial_text);
 static xd_list_t *xd_home_path_completions_generator(const char *partial_text);
 static xd_list_t *xd_tilde_completions_generator(const char *partial_text);
+static xd_list_t *xd_var_completions_generator(const char *partial_text);
+static xd_list_t *xd_param_completions_generator(const char *partial_text);
 
 // ========================
 // Variables
@@ -218,6 +220,84 @@ static xd_list_t *xd_tilde_completions_generator(const char *partial_text) {
   return xd_home_path_completions_generator(partial_text);
 }  // xd_tilde_completions_generator()
 
+/**
+ * @brief Generates a list of all possible variable (`$var`) completions for the
+ * passed text.
+ *
+ * @param partial_text The partial text to be completed.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing all possible
+ * completions or `NULL` on failure.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_list_destroy()` and passing it the returned pointer.
+ */
+static xd_list_t *xd_var_completions_generator(const char *partial_text) {
+  partial_text = partial_text + 1;  // skip `$`
+  int partial_text_len = (int)strlen(partial_text);
+
+  xd_list_t *var_names = xd_vars_names_list();
+  if (var_names == NULL) {
+    return NULL;
+  }
+
+  xd_list_t *comp_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+  char temp[LINE_MAX];
+  for (xd_list_node_t *node = var_names->head; node != NULL;
+       node = node->next) {
+    if (strncmp(node->data, partial_text, partial_text_len) == 0) {
+      snprintf(temp, LINE_MAX, "$%s", (char *)node->data);
+      xd_list_add_last(comp_list, temp);
+    }
+  }
+
+  xd_list_destroy(var_names);
+  return comp_list;
+}  // xd_var_completions_generator()
+
+/**
+ * @brief Generates a list of all possible param (`${var}`) completions for the
+ * passed text.
+ *
+ * @param partial_text The partial text to be completed.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing all possible
+ * completions or `NULL` on failure.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_list_destroy()` and passing it the returned pointer.
+ */
+static xd_list_t *xd_param_completions_generator(const char *partial_text) {
+  partial_text = partial_text + 1;  // skip `{`
+  int partial_text_len = (int)strlen(partial_text);
+
+  xd_list_t *var_names = xd_vars_names_list();
+  if (var_names == NULL) {
+    return NULL;
+  }
+
+  xd_list_t *comp_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+  char temp[LINE_MAX];
+  for (xd_list_node_t *node = var_names->head; node != NULL;
+       node = node->next) {
+    if (strncmp(node->data, partial_text, partial_text_len) == 0) {
+      snprintf(temp, LINE_MAX, "{%s}", (char *)node->data);
+      xd_list_add_last(comp_list, temp);
+    }
+  }
+
+  xd_list_destroy(var_names);
+  return comp_list;
+}
+
 // ========================
 // Public Functions
 // ========================
@@ -229,6 +309,10 @@ char **xd_completions_generator(const char *line, int start, int end) {
 
   xd_list_t *comp_list = NULL;
   char chr = line[start];
+  char prev_chr = ' ';
+  if (start > 0) {
+    prev_chr = line[start - 1];
+  }
   int partial_text_len = end - start;
 
   char *partial_text = strndup(line + start, partial_text_len);
@@ -240,6 +324,12 @@ char **xd_completions_generator(const char *line, int start, int end) {
 
   if (chr == '~') {
     comp_list = xd_tilde_completions_generator(partial_text);
+  }
+  else if (chr == '$') {
+    comp_list = xd_var_completions_generator(partial_text);
+  }
+  else if (chr == '{' && prev_chr == '$') {
+    comp_list = xd_param_completions_generator(partial_text);
   }
 
   free(partial_text);
