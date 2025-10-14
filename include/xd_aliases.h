@@ -13,6 +13,8 @@
  * ==============================================================================
  */
 
+#include "xd_list.h"
+
 /**
  * @brief Initializes the aliases hash map.
  *
@@ -74,6 +76,20 @@ void xd_aliases_put(char *name, char *value);
  * fails when rehashing the aliases map.
  */
 int xd_aliases_remove(char *name);
+
+/**
+ * @brief Returns a newly allocated `xd_list` structure containing the names of
+ * all defined aliases.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing the names of all
+ * defined aliases or `NULL` on failure.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_listr_destroy()` and passing it the returned pointer.
+ */
+xd_list_t *xd_aliases_names_list();
 
 /**
  * @brief Prints all aliases to stdout.

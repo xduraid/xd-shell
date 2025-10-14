@@ -15,6 +15,7 @@
 
 #include "xd_comp_generator.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <glob.h>
 #include <limits.h>
@@ -25,7 +26,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "xd_aliases.h"
 #include "xd_list.h"
+#include "xd_readline.h"
 #include "xd_utils.h"
 #include "xd_vars.h"
 
@@ -44,6 +47,9 @@ static xd_list_t *xd_home_path_completions_generator(const char *partial_text);
 static xd_list_t *xd_tilde_completions_generator(const char *partial_text);
 static xd_list_t *xd_var_completions_generator(const char *partial_text);
 static xd_list_t *xd_param_completions_generator(const char *partial_text);
+
+static xd_list_t *xd_alias_completions_generator(const char *partial_text);
+static xd_list_t *xd_command_completions_generator(const char *partial_text);
 
 // ========================
 // Variables
@@ -298,6 +304,88 @@ static xd_list_t *xd_param_completions_generator(const char *partial_text) {
   return comp_list;
 }
 
+/**
+ * @brief Generates a list of all possible alias completions for the passed
+ * text.
+ *
+ * @param partial_text The partial text to be completed.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing all possible
+ * completions or `NULL` on failure.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_list_destroy()` and passing it the returned pointer.
+ */
+static xd_list_t *xd_alias_completions_generator(const char *partial_text) {
+  char delimiter_char = partial_text[0];
+  char prefix[2] = "";
+  if (strchr(XD_RL_TAB_COMP_DELIMITERS, delimiter_char) != NULL) {
+    partial_text += 1;
+    prefix[0] = delimiter_char;
+    prefix[1] = '\0';
+  }
+  int partial_text_len = (int)strlen(partial_text);
+
+  if (partial_text_len == 0) {
+    return NULL;
+  }
+
+  xd_list_t *alias_names = xd_aliases_names_list();
+  if (alias_names == NULL) {
+    return NULL;
+  }
+
+  xd_list_t *comp_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+  char temp[LINE_MAX];
+  for (xd_list_node_t *node = alias_names->head; node != NULL;
+       node = node->next) {
+    if (strncmp(node->data, partial_text, partial_text_len) == 0) {
+      snprintf(temp, LINE_MAX, "%s%s", prefix, (char *)node->data);
+      xd_list_add_last(comp_list, temp);
+    }
+  }
+
+  xd_list_destroy(alias_names);
+  return comp_list;
+}  // xd_alias_completions_generator()
+
+/**
+ * @brief Generates a list of all possible command completions for the passed
+ * text.
+ *
+ * @param partial_text The partial text to be completed.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing all possible
+ * completions or `NULL` on failure.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_list_destroy()` and passing it the returned pointer.
+ */
+static xd_list_t *xd_command_completions_generator(const char *partial_text) {
+  xd_list_t *alias_comp_list = xd_alias_completions_generator(partial_text);
+
+  xd_list_t *comp_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+
+  if (alias_comp_list != NULL) {
+    for (xd_list_node_t *node = alias_comp_list->head; node != NULL;
+         node = node->next) {
+      xd_list_add_last(comp_list, node->data);
+    }
+  }
+
+  xd_list_destroy(alias_comp_list);
+
+  return comp_list;
+}  // xd_command_completions_generator()
+
 // ========================
 // Public Functions
 // ========================
@@ -322,6 +410,8 @@ char **xd_completions_generator(const char *line, int start, int end) {
     exit(EXIT_FAILURE);
   }
 
+  //  abcd
+
   if (chr == '~') {
     comp_list = xd_tilde_completions_generator(partial_text);
   }
@@ -331,23 +421,58 @@ char **xd_completions_generator(const char *line, int start, int end) {
   else if (chr == '{' && prev_chr == '$') {
     comp_list = xd_param_completions_generator(partial_text);
   }
+  else {
+    int idx = start;
+    while (idx >= 0 && isspace(line[idx])) {
+      idx--;
+    }
+
+    char prev_nonspace_chr = '\0';
+    if (idx != start && idx >= 0 && !isspace(line[idx])) {
+      prev_nonspace_chr = line[idx];
+    }
+
+    if (prev_nonspace_chr == '\0' || prev_nonspace_chr == '(' ||
+        prev_nonspace_chr == '|') {
+      comp_list = xd_command_completions_generator(partial_text);
+    }
+  }
 
   free(partial_text);
-  if (comp_list == NULL) {
+  if (comp_list == NULL || comp_list->length == 0) {
+    xd_list_destroy(comp_list);
     return NULL;
   }
 
-  // build null-terminated array of completions
-  char **comp_arr = (char **)malloc(sizeof(char *) * (comp_list->length + 1));
+  // get array of sorted completions
+  int comp_count = comp_list->length;
+  char **comp_arr = (char **)malloc(sizeof(char *) * (comp_count + 1));
   xd_list_node_t *node = comp_list->head;
-  for (int i = 0; i < comp_list->length; i++) {
+  for (int i = 0; i < comp_count; i++) {
     comp_arr[i] = xd_utils_strdup(node->data);
     node = node->next;
   }
-  comp_arr[comp_list->length] = NULL;
+  qsort((void *)comp_arr, comp_count, sizeof(char *), xd_str_cmp);
 
-  // sort the completions
-  qsort((void *)comp_arr, comp_list->length, sizeof(char *), xd_str_cmp);
+  // remove duplicates
+  xd_list_clear(comp_list);
+  xd_list_add_last(comp_list, comp_arr[0]);
+  for (int i = 0; i < comp_count; i++) {
+    if (strcmp(comp_list->tail->data, comp_arr[i]) != 0) {
+      xd_list_add_last(comp_list, comp_arr[i]);
+    }
+    free(comp_arr[i]);
+  }
+  free((void *)comp_arr);
+
+  comp_count = comp_list->length;
+  comp_arr = (char **)malloc(sizeof(char *) * (comp_count + 1));
+  node = comp_list->head;
+  for (int i = 0; i < comp_count; i++) {
+    comp_arr[i] = xd_utils_strdup(node->data);
+    node = node->next;
+  }
+  comp_arr[comp_count] = NULL;
   xd_list_destroy(comp_list);
 
   return comp_arr;

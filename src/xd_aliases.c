@@ -77,6 +77,26 @@ int xd_aliases_remove(char *name) {
   return xd_map_remove(xd_aliases, name);
 }  // xd_aliases_remove()
 
+xd_list_t *xd_aliases_names_list() {
+  if (xd_aliases == NULL) {
+    return NULL;
+  }
+
+  xd_list_t *list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+  for (int i = 0; i < xd_aliases->bucket_count; i++) {
+    xd_list_t *bucket = xd_aliases->buckets[i];
+    for (xd_list_node_t *node = bucket->head; node != NULL; node = node->next) {
+      xd_bucket_entry_t *entry = node->data;
+      char *name = entry->key;
+      xd_list_add_last(list, name);
+    }
+  }
+
+  return list;
+}  // xd_aliases_names_list()
+
 void xd_aliases_print_all() {
   if (xd_aliases == NULL) {
     return;
