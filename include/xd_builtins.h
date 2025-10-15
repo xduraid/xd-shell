@@ -16,6 +16,8 @@
 #ifndef XD_BUILTINS_H
 #define XD_BUILTINS_H
 
+#include "xd_list.h"
+
 /**
  * @brief Checks if the passed string is a built-in command name.
  *
@@ -36,5 +38,19 @@ int xd_builtins_is_builtin(const char *str);
  * builtin matches.
  */
 int xd_builtins_execute(int argc, char **argv);
+
+/**
+ * @brief Returns a newly allocated `xd_list` structure containing the names of
+ * all defined builtins.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing the names of all
+ * defined builtins or `NULL` on failure.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_listr_destroy()` and passing it the returned pointer.
+ */
+xd_list_t *xd_builtins_names_list();
 
 #endif  // XD_BUILTINS_H

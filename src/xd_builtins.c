@@ -1651,3 +1651,13 @@ int xd_builtins_execute(int argc, char **argv) {
   fprintf(stderr, "xd-shell: builtins: not a builtin!\n");
   return 3;
 }  // xd_builtins_execute()
+
+xd_list_t *xd_builtins_names_list() {
+  xd_list_t *list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+  for (int i = 0; i < xd_builtins_count; i++) {
+    xd_list_add_last(list, (void *)xd_builtins[i].name);
+  }
+  return list;
+}  // xd_builtins_names_list()

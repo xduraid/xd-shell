@@ -27,6 +27,7 @@
 #include <unistd.h>
 
 #include "xd_aliases.h"
+#include "xd_builtins.h"
 #include "xd_list.h"
 #include "xd_readline.h"
 #include "xd_utils.h"
@@ -49,6 +50,7 @@ static xd_list_t *xd_var_completions_generator(const char *partial_text);
 static xd_list_t *xd_param_completions_generator(const char *partial_text);
 
 static xd_list_t *xd_alias_completions_generator(const char *partial_text);
+static xd_list_t *xd_builtin_completions_generator(const char *partial_text);
 static xd_list_t *xd_command_completions_generator(const char *partial_text);
 
 // ========================
@@ -354,6 +356,54 @@ static xd_list_t *xd_alias_completions_generator(const char *partial_text) {
 }  // xd_alias_completions_generator()
 
 /**
+ * @brief Generates a list of all possible builtin command completions for the
+ * passed text.
+ *
+ * @param partial_text The partial text to be completed.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing all possible
+ * completions or `NULL` on failure.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_list_destroy()` and passing it the returned pointer.
+ */
+static xd_list_t *xd_builtin_completions_generator(const char *partial_text) {
+  char delimiter_char = partial_text[0];
+  char prefix[2] = "";
+  if (strchr(XD_RL_TAB_COMP_DELIMITERS, delimiter_char) != NULL) {
+    partial_text += 1;
+    prefix[0] = delimiter_char;
+    prefix[1] = '\0';
+  }
+  int partial_text_len = (int)strlen(partial_text);
+  if (partial_text_len == 0) {
+    return NULL;
+  }
+
+  xd_list_t *builtin_names = xd_builtins_names_list();
+  if (builtin_names == NULL) {
+    return NULL;
+  }
+
+  xd_list_t *comp_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+  char temp[LINE_MAX];
+  for (xd_list_node_t *node = builtin_names->head; node != NULL;
+       node = node->next) {
+    if (strncmp(node->data, partial_text, partial_text_len) == 0) {
+      snprintf(temp, LINE_MAX, "%s%s", prefix, (char *)node->data);
+      xd_list_add_last(comp_list, temp);
+    }
+  }
+
+  xd_list_destroy(builtin_names);
+  return comp_list;
+}  // xd_builtin_completions_generator()
+
+/**
  * @brief Generates a list of all possible command completions for the passed
  * text.
  *
@@ -369,6 +419,7 @@ static xd_list_t *xd_alias_completions_generator(const char *partial_text) {
  */
 static xd_list_t *xd_command_completions_generator(const char *partial_text) {
   xd_list_t *alias_comp_list = xd_alias_completions_generator(partial_text);
+  xd_list_t *builtin_comp_list = xd_builtin_completions_generator(partial_text);
 
   xd_list_t *comp_list =
       xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
@@ -380,8 +431,15 @@ static xd_list_t *xd_command_completions_generator(const char *partial_text) {
       xd_list_add_last(comp_list, node->data);
     }
   }
+  if (builtin_comp_list != NULL) {
+    for (xd_list_node_t *node = builtin_comp_list->head; node != NULL;
+         node = node->next) {
+      xd_list_add_last(comp_list, node->data);
+    }
+  }
 
   xd_list_destroy(alias_comp_list);
+  xd_list_destroy(builtin_comp_list);
 
   return comp_list;
 }  // xd_command_completions_generator()
