@@ -42,11 +42,6 @@
  */
 #define XD_FILE_ACCESS_MODE (0664)
 
-/**
- * @brief Fallback path when the environment variable `PATH` isn't defined.
- */
-#define XD_PATH_DEFAULT "/bin:/usr/bin"
-
 // ========================
 // Function Declarations
 // ========================
@@ -432,7 +427,7 @@ static char *xd_path_search(const char *name) {
 
   const char *PATH = xd_vars_get("PATH");
   if (PATH == NULL) {
-    PATH = XD_PATH_DEFAULT;
+    PATH = XD_SH_DEF_PATH;
   }
 
   int name_len = (int)strlen(name);

@@ -69,6 +69,12 @@
  */
 #define XD_SH_DEF_HISTFILE_NAME ".xdsh_history"
 
+/**
+ * @brief Fallback path when the environment variable `PATH` isn't defined.
+ */
+#define XD_SH_DEF_PATH \
+  "/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin"
+
 // ========================
 // Function Declarations
 // ========================

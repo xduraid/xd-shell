@@ -16,6 +16,7 @@
 #include "xd_comp_generator.h"
 
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <glob.h>
 #include <limits.h>
@@ -30,6 +31,7 @@
 #include "xd_builtins.h"
 #include "xd_list.h"
 #include "xd_readline.h"
+#include "xd_shell.h"
 #include "xd_utils.h"
 #include "xd_vars.h"
 
@@ -52,6 +54,8 @@ static xd_list_t *xd_param_completions_generator(const char *partial_text);
 static xd_list_t *xd_alias_completions_generator(const char *partial_text);
 static xd_list_t *xd_builtin_completions_generator(const char *partial_text);
 static xd_list_t *xd_executable_path_completions_generator(
+    const char *partial_text);
+static xd_list_t *xd_path_command_completions_generator(
     const char *partial_text);
 static xd_list_t *xd_command_completions_generator(const char *partial_text);
 
@@ -482,6 +486,124 @@ static xd_list_t *xd_executable_path_completions_generator(
 }  // xd_executable_path_completions_generator()
 
 /**
+ * @brief enerates a list of command name completions from the `$PATH`
+ * environment for the passed text.
+ *
+ * @param partial_text The partial text to be completed.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing all possible
+ * completions or `NULL` on failure.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_list_destroy()` and passing it the returned pointer.
+ */
+static xd_list_t *xd_path_command_completions_generator(
+    const char *partial_text) {
+  char delimiter_char = partial_text[0];
+  char prefix[2] = "";
+  if (strchr(XD_RL_TAB_COMP_DELIMITERS, delimiter_char) != NULL) {
+    partial_text += 1;
+    prefix[0] = delimiter_char;
+    prefix[1] = '\0';
+  }
+  int partial_text_len = (int)strlen(partial_text);
+  if (partial_text_len == 0) {
+    return NULL;
+  }
+
+  const char *PATH = xd_vars_get("PATH");
+  if (PATH == NULL) {
+    PATH = XD_SH_DEF_PATH;
+  }
+  const char *cursor = PATH;
+  char path_buffer[PATH_MAX];
+
+  xd_list_t *comp_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+
+  while (1) {
+    const char *colon = strchr(cursor, ':');
+    int segment_len =
+        (colon == NULL) ? (int)strlen(cursor) : (int)(colon - cursor);
+
+    const char *dir_path;
+    int dir_len;
+    if (segment_len == 0) {
+      // empty, used current directory
+      dir_path = ".";
+      dir_len = 1;
+    }
+    else {
+      dir_path = cursor;
+      dir_len = segment_len;
+    }
+
+    int need_slash = (dir_path[dir_len - 1] != '/');
+    size_t prefix_len = dir_len + need_slash;
+
+    if (prefix_len < PATH_MAX) {
+      memcpy(path_buffer, dir_path, dir_len);
+      if (need_slash) {
+        path_buffer[dir_len] = '/';
+      }
+      path_buffer[prefix_len] = '\0';
+
+      DIR *dir = opendir(path_buffer);
+      if (dir != NULL) {
+        struct dirent *dir_ent;
+        char full_path[PATH_MAX];
+        while ((dir_ent = readdir(dir)) != NULL) {
+          const char *name = dir_ent->d_name;
+
+          // skip directories
+          if (name[0] == '.' &&
+              (name[1] == '\0' || (name[1] == '.' && name[2] == '\0'))) {
+            continue;
+          }
+          if (strchr(name, '/') != NULL) {
+            continue;
+          }
+
+          // skip non-matches
+          if (strncmp(name, partial_text, partial_text_len) != 0) {
+            continue;
+          }
+
+          size_t name_len = strlen(name);
+          size_t full_len = prefix_len + name_len;
+          if (full_len >= PATH_MAX) {
+            continue;
+          }
+          memcpy(full_path, path_buffer, prefix_len);
+          memcpy(full_path + prefix_len, name, name_len);
+          full_path[full_len] = '\0';
+
+          if (access(full_path, X_OK) == 0) {
+            struct stat file_stat;
+            if (stat(full_path, &file_stat) == 0 &&
+                S_ISREG(file_stat.st_mode)) {
+              snprintf(full_path, PATH_MAX, "%s%s", prefix, name);
+              xd_list_add_last(comp_list, (void *)full_path);
+            }
+          }
+        }
+        closedir(dir);
+      }
+    }
+
+    if (colon == NULL) {
+      break;
+    }
+    cursor = colon + 1;
+  }
+
+  return comp_list;
+}  // xd_path_command_completions_generator()
+
+/**
  * @brief Generates a list of all possible command completions for the passed
  * text.
  *
@@ -500,6 +622,8 @@ static xd_list_t *xd_command_completions_generator(const char *partial_text) {
   xd_list_t *builtin_comp_list = xd_builtin_completions_generator(partial_text);
   xd_list_t *path_comp_list =
       xd_executable_path_completions_generator(partial_text);
+  xd_list_t *cmd_comp_list =
+      xd_path_command_completions_generator(partial_text);
 
   xd_list_t *comp_list =
       xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
@@ -523,10 +647,17 @@ static xd_list_t *xd_command_completions_generator(const char *partial_text) {
       xd_list_add_last(comp_list, node->data);
     }
   }
+  if (cmd_comp_list != NULL) {
+    for (xd_list_node_t *node = cmd_comp_list->head; node != NULL;
+         node = node->next) {
+      xd_list_add_last(comp_list, node->data);
+    }
+  }
 
   xd_list_destroy(alias_comp_list);
   xd_list_destroy(builtin_comp_list);
   xd_list_destroy(path_comp_list);
+  xd_list_destroy(cmd_comp_list);
 
   return comp_list;
 }  // xd_command_completions_generator()
