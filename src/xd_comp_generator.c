@@ -59,6 +59,8 @@ static xd_list_t *xd_path_command_completions_generator(
     const char *partial_text);
 static xd_list_t *xd_command_completions_generator(const char *partial_text);
 
+static xd_list_t *xd_arg_path_completions_generator(const char *partial_text);
+
 // ========================
 // Variables
 // ========================
@@ -662,6 +664,68 @@ static xd_list_t *xd_command_completions_generator(const char *partial_text) {
   return comp_list;
 }  // xd_command_completions_generator()
 
+/**
+ * @brief Generates a list of all possible path completions for the passed
+ * text.
+ *
+ * @param partial_text The partial text to be completed.
+ *
+ * @return Pointer to a newly allocated `xd_list_t` containing all possible
+ * completions or `NULL` on failure.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `xd_list_destroy()` and passing it the returned pointer.
+ */
+static xd_list_t *xd_arg_path_completions_generator(const char *partial_text) {
+  char delimiter_char = partial_text[0];
+  char prefix[2] = "";
+  if (strchr(XD_RL_TAB_COMP_DELIMITERS, delimiter_char) != NULL) {
+    partial_text += 1;
+    prefix[0] = delimiter_char;
+    prefix[1] = '\0';
+  }
+  int partial_text_len = (int)strlen(partial_text);
+  if (partial_text_len == 0) {
+    return NULL;
+  }
+
+  char temp[PATH_MAX] = {0};
+
+  xd_list_t *comp_list =
+      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
+                     xd_utils_str_comp_func);
+
+  if (strcmp(partial_text, "..") == 0) {
+    snprintf(temp, PATH_MAX, "%s%s/", prefix, partial_text);
+    xd_list_add_last(comp_list, temp);
+    return comp_list;
+  }
+
+  // initialize glob pattern
+  snprintf(temp, PATH_MAX, "%s*", partial_text);
+
+  // find glob matches
+  glob_t glob_result;
+  int glob_flags = GLOB_MARK | GLOB_NOSORT;
+  if (glob(temp, glob_flags, NULL, &glob_result) != 0) {
+    xd_list_destroy(comp_list);
+    return NULL;
+  }
+
+  int comp_count = (int)glob_result.gl_pathc;
+
+  for (int i = 0; i < comp_count; i++) {
+    char *path = glob_result.gl_pathv[i];
+    snprintf(temp, PATH_MAX, "%s%s", prefix, path);
+    xd_list_add_last(comp_list, temp);
+  }
+  globfree(&glob_result);
+
+  return comp_list;
+}  // xd_arg_path_completions_generator()
+
 // ========================
 // Public Functions
 // ========================
@@ -711,6 +775,9 @@ char **xd_completions_generator(const char *line, int start, int end) {
     if (prev_nonspace_chr == '\0' || prev_nonspace_chr == '(' ||
         prev_nonspace_chr == '|') {
       comp_list = xd_command_completions_generator(partial_text);
+    }
+    else {
+      comp_list = xd_arg_path_completions_generator(partial_text);
     }
   }
 
