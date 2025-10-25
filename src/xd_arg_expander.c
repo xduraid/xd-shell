@@ -74,7 +74,7 @@ typedef enum xd_scan_state_t {
 // ========================
 
 // flex & bison funcs
-extern void yylex_scan_string(const char *str);
+extern void yylex_scan_string(char *str);
 extern void yyparse_initialize();
 extern void yyparse_cleanup();
 extern int yyparse();
@@ -373,6 +373,8 @@ static void xd_exec_capture_output(char *arg, const char *orig_mask,
     }
     close(pipe_fd[1]);
 
+    xd_sh_is_subshell = 1;
+
     // re-initialize the scanner and parser
     yyparse_cleanup();
     yyparse_initialize();
@@ -380,9 +382,6 @@ static void xd_exec_capture_output(char *arg, const char *orig_mask,
     // setup scanner input to be the command string
     yylex_scan_string(cmd_str);
     free(arg);
-
-    xd_sh_is_interactive = 0;
-    xd_sh_is_subshell = 1;
 
     yyparse();
 

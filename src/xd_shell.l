@@ -45,18 +45,54 @@
   }
 
 // ========================
+// Typedefs
+// ========================
+
+/**
+ * @brief Represents the type of an input source currently being scanned.
+ */
+typedef enum xd_input_type_t {
+  XD_INPUT_TYPE_ALIAS,   // alias string source
+  XD_INPUT_TYPE_STRING,  // string source (not an alias)
+  XD_INPUT_TYPE_FILE,    // file source
+} xd_input_type_t;
+
+/**
+ * @brief Represents an input stack frame.
+ */
+typedef struct xd_input_stack_frame_t {
+  xd_input_type_t input_type;  // type of input
+  int is_interacive;           // indicates whether input is interactive (stdin)
+  FILE *file;                  // for `XD_INPUT_TYPE_FILE`
+  char *str;                   // string for `_TYPE_STRING/_TYPE_ALIAS`
+  char *alias_name;            // alias name
+  int str_pos;                 // current offset within `str`
+} xd_input_stack_frame_t;
+
+// ========================
 // Function Declarations
 // ========================
 
 static int xd_getc();
 static void xd_reset_scanner();
-static void xd_alias_expansion_stack_push(char *alias_name);
-static void xd_alias_expansion_stack_pop();
-static int xd_alias_is_being_expanded(const char *alias_name);
+
+static void *xd_input_stack_frame_copy_func(void *data);
+static void xd_input_stack_frame_destroy_func(void *data);
+static int xd_input_stack_frame_cmp_func(const void *data1, const void *data2);
+
+static void xd_input_stack_push_string(char *str);
+static void xd_input_stack_push_alias(char *alias_name, char *alias);
+static void xd_input_stack_push_file(FILE *file);
+static void xd_input_stack_pop();
+static int xd_is_alias_being_expanded(const char *alias_name);
 
 void yylex_initialize();
 void yylex_cleanup();
-void yylex_scan_string(const char *str);
+
+void yylex_scan_string(char *str);
+void yylex_scan_file(FILE *file);
+void yylex_scan_stdin_interactive();
+void yylex_scan_stdin_noninteractive();
 
 // ========================
 // Variables
@@ -88,17 +124,19 @@ static int xd_input_interrupted = 0;
 static int xd_line_cont = 0;
 
 /**
- * @brief Stack of currently expanded aliases, in sync with the yy buffer stack.
- *
- * Each element is a string for an alias buffer or `NULL` for non-alias buffers
- * (e.g., source files). Used to prevent recursive alias expansions.
+ * @brief Stack of input sources currently being scanned.
  */
-static xd_list_t *xd_alias_expansion_stack = NULL;
+static xd_list_t *xd_input_stack = NULL;
 
 /**
  * @brief Dynamic string for accumulating arguments.
  */
 static xd_string_t *xd_arg_str = NULL;
+
+/**
+ * @brief Dynamic string structure for building strings.
+ */
+static xd_string_t *xd_temp_str = NULL;
 
 // ========================
 // Public Variables
@@ -358,39 +396,38 @@ static xd_string_t *xd_arg_str = NULL;
 
 <ARG_STATE>[ \t\n<>|&] {
   yy_pop_state();
-  yyless(0);
 
   if (xd_arg_str->length > 0) {
     if (xd_current_command == NULL &&
         xd_aliases_is_valid_name(xd_arg_str->str)) {
       // first argument in argv
       const char *alias = xd_aliases_get(xd_arg_str->str);
-      if (alias != NULL && !xd_alias_is_being_expanded(xd_arg_str->str)) {
+      if (alias != NULL && !xd_is_alias_being_expanded(xd_arg_str->str)) {
         // alias expansion
-        xd_alias_expansion_stack_push(xd_arg_str->str);
-        xd_string_clear(xd_arg_str);
+        xd_string_clear(xd_temp_str);
+        xd_string_append_str(xd_temp_str, alias);
+        xd_string_append_chr(xd_temp_str, yytext[0]);
 
-        // append delimiter to the alias to finish scanning it before `EOF`
-        xd_string_append_str(xd_arg_str, alias);
-        xd_string_append_chr(xd_arg_str, ' ');
-
-        YY_BUFFER_STATE current_buf = YY_CURRENT_BUFFER;
-        YY_BUFFER_STATE new_buf = yy_scan_string(xd_arg_str->str);
-        yy_switch_to_buffer(current_buf);
-        yypush_buffer_state(new_buf);
+        xd_sh_is_interactive = 0;
+        xd_input_stack_push_alias(xd_arg_str->str, xd_temp_str->str);
         xd_string_clear(xd_arg_str);
       }
       else {
         yylval.string = xd_utils_strdup(xd_arg_str->str);
         xd_string_clear(xd_arg_str);
+        yyless(0);
         return ARG;
       }
     }
     else {
       yylval.string = xd_utils_strdup(xd_arg_str->str);
-        xd_string_clear(xd_arg_str);
+      xd_string_clear(xd_arg_str);
+      yyless(0);
       return ARG;
     }
+  }
+  else {
+    yyless(0);
   }
 }
 
@@ -401,9 +438,13 @@ static xd_string_t *xd_arg_str = NULL;
     return LEX_INTR;
   }
   else {
-    fprintf(stderr, "xd-shell: unexpected EOF while waiting for matching '''\n");
-    xd_sh_last_exit_code = 2;
-    yyterminate();
+    xd_input_stack_pop();
+    if (xd_input_stack->length == 0) {
+      fprintf(stderr,
+              "xd-shell: unexpected EOF while waiting for matching '''\n");
+      xd_sh_last_exit_code = 2;
+      yyterminate();
+    }
   }
 }
 
@@ -414,9 +455,13 @@ static xd_string_t *xd_arg_str = NULL;
     return LEX_INTR;
   }
   else {
-    fprintf(stderr, "xd-shell: unexpected EOF while waiting for matching '\"'\n");
-    xd_sh_last_exit_code = 2;
-    yyterminate();
+    xd_input_stack_pop();
+    if (xd_input_stack->length == 0) {
+      fprintf(stderr,
+              "xd-shell: unexpected EOF while waiting for matching '\"'\n");
+      xd_sh_last_exit_code = 2;
+      yyterminate();
+    }
   }
 }
 
@@ -427,9 +472,13 @@ static xd_string_t *xd_arg_str = NULL;
     return LEX_INTR;
   }
   else {
-    fprintf(stderr, "xd-shell: unexpected EOF while waiting for matching '}'\n");
-    xd_sh_last_exit_code = 2;
-    yyterminate();
+    xd_input_stack_pop();
+    if (xd_input_stack->length == 0) {
+      fprintf(stderr,
+              "xd-shell: unexpected EOF while waiting for matching '}'\n");
+      xd_sh_last_exit_code = 2;
+      yyterminate();
+    }
   }
 }
 
@@ -440,9 +489,13 @@ static xd_string_t *xd_arg_str = NULL;
     return LEX_INTR;
   }
   else {
-    fprintf(stderr, "xd-shell: unexpected EOF while waiting for matching ')'\n");
-    xd_sh_last_exit_code = 2;
-    yyterminate();
+    xd_input_stack_pop();
+    if (xd_input_stack->length == 0) {
+      fprintf(stderr,
+              "xd-shell: unexpected EOF while waiting for matching ')'\n");
+      xd_sh_last_exit_code = 2;
+      yyterminate();
+    }
   }
 }
 
@@ -453,9 +506,8 @@ static xd_string_t *xd_arg_str = NULL;
     return LEX_INTR;
   }
   else {
-    xd_alias_expansion_stack_pop();
-    yypop_buffer_state();
-    if (YY_CURRENT_BUFFER == NULL) {
+    xd_input_stack_pop();
+    if (xd_input_stack->length == 0) {
       if (xd_sh_is_interactive) {
         printf("exit\n");
         fflush(stdout);
@@ -472,16 +524,38 @@ static xd_string_t *xd_arg_str = NULL;
 // ========================
 
 /**
- * @brief Reads one character from `stdin` and returns it.
+ * @brief Retrieves the next character from the active input source and returns
+ * it.
  *
- * If shell is running in interactive mode, it uses `xd_readline()`, otherwise
- * it reads the character normally using `getchar()`.
+ * Clears pending shell interrupts, then reads from the top frame on the input
+ * stack when running non-interactively (files or string expansions). In
+ * interactive mode it refreshes prompts, obtains a new line from
+ * `xd_readline()` when necessary, and records non-duplicate entries in the
+ * history buffer.
  *
- * @return The read character.
+ * @return The next character or `EOF` when no input remains or an interrupt is
+ * pending.
  */
 static int xd_getc() {
+  if (xd_sh_is_interrupted) {
+    xd_sh_is_interrupted = 0;
+    xd_input_interrupted = 1;
+    return EOF;
+  }
+
   if (!xd_sh_is_interactive) {
-    return getchar();
+    if (xd_input_stack == NULL || xd_input_stack->length == 0) {
+      return EOF;
+    }
+
+    xd_input_stack_frame_t *top_frame = xd_input_stack->head->data;
+    if (top_frame->input_type == XD_INPUT_TYPE_FILE) {
+      return fgetc(top_frame->file);
+    }
+    else {
+      char chr = top_frame->str[top_frame->str_pos++];
+      return chr == '\0' ? EOF : chr;
+    }
   }
 
   if (xd_interactive_next_char == NULL || *xd_interactive_next_char == '\0') {
@@ -523,13 +597,11 @@ static int xd_getc() {
 }  // xd_getc()
 
 /**
- * @brief Resets the scanner to its initial state, clearing the input buffer,
- * argument buffer, start conditions stack, and buffers stack.
+ * @brief Resets the scanner to its initial state.
  */
 static void xd_reset_scanner() {
-  while (YY_CURRENT_BUFFER != NULL) {
-    xd_alias_expansion_stack_pop();
-    yypop_buffer_state();
+  while (xd_input_stack->length > 1) {
+    xd_input_stack_pop();
   }
   while (YYSTATE != INITIAL) {
     yy_pop_state();
@@ -539,40 +611,174 @@ static void xd_reset_scanner() {
 }  // xd_reset_scanner()
 
 /**
- * @brief Pushes the passed alias name to the top of the alias expansion stack.
+ * @brief Creates a newly-allocated shallow copy of the passed input stack
+ * frame.
  *
- * @param alias_name Pointer to the alias name string.
+ * @param data Pointer to the `xd_input_stack_frame_t` structure to be copied.
+ *
+ * @return A pointer to the newly allocated shallow copy of the frame, or `NULL`
+ * if the passed pointer is `NULL`.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `free()` and passing it the returned pointer.
  */
-static void xd_alias_expansion_stack_push(char *alias_name) {
-  xd_list_add_first(xd_alias_expansion_stack, alias_name);
-}  // xd_alias_expansion_stack_push()
+static void *xd_input_stack_frame_copy_func(void *data) {
+  if (data == NULL) {
+    return NULL;
+  }
+
+  xd_input_stack_frame_t *frame = data;
+  xd_input_stack_frame_t *copy =
+      (xd_input_stack_frame_t *)malloc(sizeof(xd_input_stack_frame_t));
+  if (copy == NULL) {
+    fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+            strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+  copy->input_type = frame->input_type;
+  copy->file = frame->file;
+  copy->str = frame->str;
+  copy->alias_name = frame->alias_name;
+  copy->str_pos = frame->str_pos;
+  copy->is_interacive = frame->is_interacive;
+  return copy;
+}  // xd_input_stack_frame_copy_func()
 
 /**
- * @brief Pops an element from the top of the alias expansion stack.
+ * @brief Frees the memory and associated resources of the passed input stack
+ * frame.
+ *
+ * @param data Pointer to the `xd_input_stack_frame_t` structure to be freed.
  */
-static void xd_alias_expansion_stack_pop() {
-  if (xd_alias_expansion_stack->length == 0) {
+static void xd_input_stack_frame_destroy_func(void *data) {
+  xd_input_stack_frame_t *frame = data;
+  if (frame->input_type == XD_INPUT_TYPE_FILE) {
+    if (frame->file != stdin) {
+      fclose(frame->file);
+    }
+  }
+  else {
+    free(frame->str);
+    free(frame->alias_name);
+  }
+  free(frame);
+}  // xd_input_stack_frame_destroy_func()
+
+/**
+ * @brief Compares two input stack frames (not-implemented).
+ *
+ * @param data1 Pointer to the first `xd_input_stack_frame_t` structure.
+ * @param data2 Pointer to the second `xd_input_stack_frame_t` structure.
+ *
+ * @return Always returns `0`.
+ *
+ * @note This function always returns `0` and is only provided to satisfy the
+ * generic list `xd_list_t` interface requirements.
+ */
+static int xd_input_stack_frame_cmp_func(const void *data1, const void *data2) {
+  (void)data1;
+  (void)data2;
+  return 0;
+}  // xd_input_stack_frame_cmp_func()
+
+/**
+ * @brief Pushes a string input frame onto the scanner stack.
+ *
+ * @param str Pointer to the null-terminated string to be scanned.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+static void xd_input_stack_push_string(char *str) {
+  xd_input_stack_frame_t frame;
+  frame.input_type = XD_INPUT_TYPE_STRING;
+  frame.file = NULL;
+  frame.alias_name = NULL;
+  frame.str = xd_utils_strdup(str);
+  frame.str_pos = 0;
+  frame.is_interacive = xd_sh_is_interactive;
+  xd_list_add_first(xd_input_stack, &frame);
+}  // xd_input_stack_push_string()
+
+/**
+ * @brief Pushes an alias expansion frame onto the scanner stack.
+ *
+ * @param alias_name Pointer to the alias name being expanded.
+ * @param alias Pointer to the alias definition that will be scanned.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+static void xd_input_stack_push_alias(char *alias_name, char *alias) {
+  xd_input_stack_frame_t frame;
+  frame.input_type = XD_INPUT_TYPE_ALIAS;
+  frame.file = NULL;
+  frame.alias_name = xd_utils_strdup(alias_name);
+  frame.str = xd_utils_strdup(alias);
+  frame.str_pos = 0;
+  frame.is_interacive = xd_sh_is_interactive;
+  xd_list_add_first(xd_input_stack, &frame);
+}  // xd_input_stack_push_alias()
+
+/**
+ * @brief Pushes a file input frame onto the scanner stack.
+ *
+ * @param file Pointer to the open file stream to be scanned.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+static void xd_input_stack_push_file(FILE *file) {
+  xd_input_stack_frame_t frame;
+  frame.input_type = XD_INPUT_TYPE_FILE;
+  frame.file = file;
+  frame.str = NULL;
+  frame.alias_name = NULL;
+  frame.str_pos = 0;
+  frame.is_interacive = xd_sh_is_interactive;
+  xd_list_add_first(xd_input_stack, &frame);
+}  // xd_input_stack_push_file()
+
+/**
+ * @brief Pops the top frame from the input stack.
+ *
+ * @note This function does nothing when the stack is empty.
+ */
+static void xd_input_stack_pop() {
+  if (xd_input_stack->length == 0) {
     return;
   }
-  xd_list_remove_first(xd_alias_expansion_stack);
-}  // xd_alias_expansion_stack_pop()
+  xd_list_remove_first(xd_input_stack);
+  if (xd_input_stack->length > 0) {
+    xd_input_stack_frame_t *top = xd_input_stack->head->data;
+    xd_sh_is_interactive = top->is_interacive;
+  }
+}  // xd_input_stack_pop()
 
 /**
- * @brief Checks if an alias is currently being expanded.
+ * @brief Checks if the passed alias name is currently being expanded.
  *
- * @param alias_name Name of the alias to be checked.
- * @return `1` if the alias is being expanded, `0` otherwise.
+ * @param alias_name The alias name to be checked.
+ *
+ * @return `1` if the alias name is being expanded, `0` otherwise.
  */
-static int xd_alias_is_being_expanded(const char *alias_name) {
-  xd_list_node_t *node = xd_alias_expansion_stack->head;
-  while (node != NULL && node->data != NULL) {
-    if (xd_alias_expansion_stack->comp_func(alias_name, node->data) == 0) {
+static int xd_is_alias_being_expanded(const char *alias_name) {
+  if (xd_input_stack->length == 0) {
+    return 0;
+  }
+
+  xd_list_node_t *node = xd_input_stack->head;
+  while (node != NULL) {
+    xd_input_stack_frame_t *frame = node->data;
+    if (frame->input_type != XD_INPUT_TYPE_ALIAS) {
+      break;
+    }
+    if (xd_utils_str_comp_func(frame->alias_name, alias_name) == 0) {
       return 1;
     }
     node = node->next;
   }
   return 0;
-}  // xd_alias_is_being_expanded()
+}  // xd_is_alias_being_expanded()
 
 // ========================
 // Public Functions
@@ -582,26 +788,81 @@ static int xd_alias_is_being_expanded(const char *alias_name) {
  * @brief Initializes the scanner.
  */
 void yylex_initialize() {
-  xd_alias_expansion_stack =
-      xd_list_create(xd_utils_str_copy_func, xd_utils_str_destroy_func,
-                     xd_utils_str_comp_func);
+  xd_input_stack = xd_list_create(xd_input_stack_frame_copy_func,
+                                  xd_input_stack_frame_destroy_func,
+                                  xd_input_stack_frame_cmp_func);
   xd_arg_str = xd_string_create();
+  xd_temp_str = xd_string_create();
 }  // yylex_init()
 
 /**
  * @brief Frees up the resources allocaed for the scanner.
  */
 void yylex_cleanup() {
-  xd_list_destroy(xd_alias_expansion_stack);
   yylex_destroy();
+  xd_list_destroy(xd_input_stack);
   xd_string_destroy(xd_arg_str);
+  xd_string_destroy(xd_temp_str);
   free(xd_last_interactive_line);
   xd_last_interactive_line = NULL;
 }  // yylex_cleanup()
 
 /**
- * @brief Wrapper for `yy_scan_string()` to be called from external source.
+ * @brief Pushes a string input source onto the scanner stack.
+ *
+ * Marks the scanner as non-interactive and copies the provided string so it
+ * can be tokenised independently of the caller's buffer.
+ *
+ * @param str Pointer to the null-terminated string to scan.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The function returns immediately if `str` is `NULL`.
  */
-void yylex_scan_string(const char *str) {
-  yy_scan_string(str);
+void yylex_scan_string(char *str) {
+  if (str == NULL) {
+    return;
+  }
+  xd_sh_is_interactive = 0;
+  xd_input_stack_push_string((char *)str);
 }  // yylex_scan_string()
+
+/**
+ * @brief Pushes a file input source onto the scanner stack.
+ *
+ * Marks the scanner as non-interactive and begins consuming tokens from the
+ * provided file stream without taking ownership of the `FILE`.
+ *
+ * @param file Pointer to an open file stream to scan.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The function returns immediately if `file` is `NULL`.
+ */
+void yylex_scan_file(FILE *file) {
+  if (file == NULL) {
+    return;
+  }
+  xd_sh_is_interactive = 0;
+  xd_input_stack_push_file(file);
+}  // yylex_scan_file()
+
+/**
+ * @brief Pushes `stdin` onto the scanner stack in interactive mode.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+void yylex_scan_stdin_interactive() {
+  xd_sh_is_interactive = 1;
+  xd_input_stack_push_file(stdin);
+}  // yylex_scan_stdin_interactive()
+
+/**
+ * @brief Pushes `stdin` onto the scanner stack in non-interactive mode.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+void yylex_scan_stdin_noninteractive() {
+  xd_sh_is_interactive = 0;
+  xd_input_stack_push_file(stdin);
+}  // yylex_scan_stdin_noninteractive()

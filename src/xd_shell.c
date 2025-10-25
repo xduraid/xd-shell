@@ -49,7 +49,10 @@ static int xd_sh_setup_signal_handlers();
 static int xd_sh_run();
 
 // flex and bison functions
-
+extern void yylex_scan_string(char *str);
+extern void yylex_scan_file(FILE *file);
+extern void yylex_scan_stdin_interactive();
+extern void yylex_scan_stdin_noninteractive();
 extern void yyparse_initialize();
 extern int yyparse();
 extern void yyparse_cleanup();
@@ -69,6 +72,7 @@ char xd_sh_path[PATH_MAX] = {0};
 pid_t xd_sh_pid = 0;
 pid_t xd_sh_pgid = 0;
 volatile sig_atomic_t xd_sh_readline_running = 0;
+volatile sig_atomic_t xd_sh_is_interrupted = 0;
 int xd_sh_last_exit_code = 0;
 pid_t xd_sh_last_bg_job_pid = 0;
 struct termios xd_sh_tty_modes = {0};
@@ -156,6 +160,13 @@ static void xd_sh_init() {
     // setup tab-completion function
     xd_readline_completions_generator = xd_completions_generator;
   }
+
+  if (xd_sh_is_interactive) {
+    yylex_scan_stdin_interactive();
+  }
+  else {
+    yylex_scan_stdin_noninteractive();
+  }
 }  // xd_sh_init()
 
 /**
@@ -190,6 +201,7 @@ static void xd_sh_sigint_handler(int signum) {
   else {
     write(STDERR_FILENO, "\n", 1);
   }
+  xd_sh_is_interrupted = 1;
   errno = saved_errno;
 }  // xd_sh_sigint_handler()
 

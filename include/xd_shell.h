@@ -119,6 +119,11 @@ extern pid_t xd_sh_pgid;
 extern volatile sig_atomic_t xd_sh_readline_running;
 
 /**
+ * @brief Indicates whether the shell was interrupted.
+ */
+extern volatile sig_atomic_t xd_sh_is_interrupted;
+
+/**
  * @brief Exit code of the last executed command.
  */
 extern int xd_sh_last_exit_code;
