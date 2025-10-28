@@ -577,15 +577,14 @@ static int xd_getc() {
       return EOF;
     }
 
-    int input_line_len = strlen(input_line);
     if (xd_last_interactive_line == NULL) {
       xd_last_interactive_line = xd_readline_history_get(-1);
     }
 
     // add non-duplicate and non-empty input lines to history
-    if (!isspace(*input_line) && (xd_last_interactive_line == NULL ||
-                                  strncmp(input_line, xd_last_interactive_line,
-                                          input_line_len - 1) != 0)) {
+    if (!isspace(*input_line) &&
+        (xd_last_interactive_line == NULL ||
+         strcmp(input_line, xd_last_interactive_line) != 0)) {
       xd_readline_history_add(input_line);
       free(xd_last_interactive_line);
       xd_last_interactive_line = xd_utils_strdup(input_line);
