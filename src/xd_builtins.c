@@ -63,6 +63,9 @@ typedef struct xd_builtin_mapping_t {
 // Function Declarations
 // ========================
 
+// flex function
+extern void yylex_scan_file(FILE *file);
+
 static void xd_jobs_usage();
 static void xd_jobs_help();
 static int xd_jobs(int argc, char **argv);
@@ -120,6 +123,10 @@ static void xd_history_usage();
 static void xd_history_help();
 static int xd_history(int argc, char **argv);
 
+static void xd_source_usage();
+static void xd_source_help();
+static int xd_source(int argc, char **argv);
+
 static void xd_exit_usage();
 static void xd_exit_help();
 static int xd_exit(int argc, char **argv);
@@ -146,6 +153,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"pwd",      xd_pwd     },
     {"echo",     xd_echo    },
     {"history",  xd_history },
+    {"source",   xd_source  },
     {"exit",     xd_exit    },
 };
 
@@ -1561,6 +1569,86 @@ static int xd_history(int argc, char **argv) {
 
   return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }  // xd_history()
+
+/**
+ * @brief Prints usage information for the `source` builtin.
+ */
+static void xd_source_usage() {
+  fprintf(stderr, "source: usage: source file\n");
+}  // xd_source_usage()
+
+/**
+ * @brief Prints detailed help information for the `help` builtin.
+ */
+static void xd_source_help() {
+  printf(
+      "source: source file\n"
+      "    Execute commands from a file in the current shell environment.\n"
+      "\n"
+      "    Exit Status:\n"
+      "    Returns the status of the last command executed in the file,\n"
+      "    fails if the file cannot be read.\n");
+}  // xd_source_help()
+
+/**
+ * @brief Executor of `source` builtin command.
+ */
+static int xd_source(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_source_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  int opt;
+  while ((opt = getopt(argc, argv, "")) != -1) {
+    switch (opt) {
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: source: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_source_usage();
+        return XD_SH_EXIT_CODE_USAGE;
+    }
+  }
+
+  if (argc == 1) {
+    fprintf(stderr, "xd-shell: source: filename argument required\n");
+    xd_source_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  if (argc > 2) {
+    fprintf(stderr, "xd-shell: source: too many arguments\n");
+    xd_source_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  const char *file_path = argv[1];
+  int is_bin = xd_utils_is_bin(file_path);
+  if (is_bin == 1) {
+    // not a binary
+    fprintf(stderr, "xd-shell: source: %s: cannot execute binary file\n",
+            file_path);
+    return EXIT_FAILURE;
+  }
+  if (is_bin == -1) {
+    // failed to open the file
+    fprintf(stderr, "xd-shell: source: %s: %s\n", file_path, strerror(errno));
+    return EXIT_FAILURE;
+  }
+
+  FILE *file = fopen(file_path, "r");
+  if (file == NULL) {
+    // failed to open the file again
+    fprintf(stderr, "xd-shell: source: %s: %s\n", file_path, strerror(errno));
+    return EXIT_FAILURE;
+  }
+
+  yylex_scan_file(file);
+  return EXIT_SUCCESS;
+}  // xd_source()
 
 /**
  * @brief Prints usage information for the `exit` builtin.

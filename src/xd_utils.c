@@ -40,6 +40,11 @@
  */
 #define XD_UTILS_DJB2_MULTIPLIER (5)
 
+/**
+ * @brief Number of bytes to read from a file when checking for binary content.
+ */
+#define XD_CHECK_CHUNK_SIZE (4096)
+
 // ========================
 // Function Declarations
 // ========================
@@ -141,3 +146,23 @@ char *xd_utils_strdup(char *str) {
   }
   return copy;
 }  // xd_utils_strdup()
+
+int xd_utils_is_bin(const char *path) {
+  if (path == NULL) {
+    return -1;
+  }
+  FILE *file = fopen(path, "rb");
+  if (file == NULL) {
+    return -1;
+  }
+  unsigned char buf[XD_CHECK_CHUNK_SIZE];
+  size_t byte_count = fread(buf, 1, XD_CHECK_CHUNK_SIZE - 1, file);
+  fclose(file);
+  for (size_t i = 0; i < byte_count; i++) {
+    if (isprint(buf[i]) || isspace(buf[i])) {
+      continue;
+    }
+    return 1;  // binary file
+  }
+  return 0;
+}  // xd_utils_is_bin()

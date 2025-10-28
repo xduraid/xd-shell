@@ -91,4 +91,13 @@ unsigned int xd_utils_str_hash_func(void *data);
  */
 char *xd_utils_strdup(char *str);
 
+/**
+ * @brief Checks if the file at the passed path is a binary file.
+ *
+ * @param path The path to the file to be checked.
+ *
+ * @return `1` if the passed file is binary, `0` if text, or `-1` on error.
+ */
+int xd_utils_is_bin(const char *path);
+
 #endif  // XD_UTILS_H
