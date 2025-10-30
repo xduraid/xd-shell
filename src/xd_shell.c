@@ -35,13 +35,18 @@
 #include "xd_job.h"
 #include "xd_jobs.h"
 #include "xd_readline.h"
+#include "xd_string.h"
 #include "xd_vars.h"
 
 // ========================
 // Function Declarations
 // ========================
 
-static void xd_sh_init() __attribute__((constructor));
+static void xd_sh_ascii_art();
+static void xd_sh_usage();
+static void xd_sh_help();
+
+static void xd_sh_init(int argc, char **argv);
 static void xd_sh_destroy() __attribute__((destructor));
 static void xd_sh_sigint_handler(int signum);
 static void xd_sh_sigchld_handler(int signum);
@@ -82,10 +87,147 @@ struct termios xd_sh_tty_modes = {0};
 // ========================
 
 /**
+ * @brief Prints the ASCII art banner that introduces xd-shell.
+ */
+static void xd_sh_ascii_art() {
+  printf(
+      "\n"
+      ".-----------------------------------------------------------------------"
+      "-------------.\n"
+      "|                                                                       "
+      "             |\n"
+      "|                                                                       "
+      "             |\n"
+      "|                                                                       "
+      "             |\n"
+      "|                        88                       88                    "
+      "   88  88    |\n"
+      "|                        88                       88                    "
+      "   88  88    |\n"
+      "|                        88                       88                    "
+      "   88  88    |\n"
+      "|   8b,     ,d8  ,adPPYb,88            ,adPPYba,  88,dPPYba,    "
+      ",adPPYba,  88  88    |\n"
+      "|    `Y8, ,8P'  a8\"    `Y88  aaaaaaaa  I8[    \"\"  88P'    \"8a  "
+      "a8P_____88  88  88    |\n"
+      "|      )888(    8b       88  \"\"\"\"\"\"\"\"   `\"Y8ba,   88       88  "
+      "8PP\"\"\"\"\"\"\"  88  88    |\n"
+      "|    ,d8\" \"8b,  \"8a,   ,d88            aa    ]8I  88       88  \"8b, "
+      "  ,aa  88  88    |\n"
+      "|   8P'     `Y8  `\"8bbdP\"Y8            `\"YbbdP\"'  88       88   "
+      "`\"Ybbd8\"'  88  88    |\n"
+      "|                                                                       "
+      "             |\n"
+      "|                                                                       "
+      "             |\n"
+      "|                                                                       "
+      "             |\n"
+      "|  xd-shell v0.1.0                                                      "
+      "             |\n"
+      "|  Author: Duraid Maihoub | MIT License                                 "
+      "             |\n"
+      "|  GitHub: https://github.com/xduraid/xd-shell                          "
+      "             |\n"
+      "|                                                                       "
+      "             |\n"
+      "'-----------------------------------------------------------------------"
+      "-------------'\n\n");
+}
+
+/**
+ * @brief Prints usage information for the shell executable.
+ */
+static void xd_sh_usage() {
+  fprintf(stderr, "xd_shell: usage: xd_shell [-c string | -f file]\n");
+}  // xd_sh_usage()
+
+/**
+ * @brief Prints detailed help information for the shell executable.
+ */
+static void xd_sh_help() {
+  xd_sh_ascii_art();
+  printf(
+      "usage: xd_shell [-c string | -f file]\n"
+      "  -c string   execute the commands provided in the string argument\n"
+      "  -f file     execute commands by parsing the specified file\n"
+      "\n"
+      "Without options, xd-shell reads from standard input. When both stdin "
+      "and\n"
+      "stdout are terminals it starts in interactive mode and uses  "
+      "xd_readline,\n"
+      "otherwise it processes input non-interactively.\n");
+}  // xd_sh_help()
+
+/**
  * @brief Constructor, runs before main to initialize the shell.
  */
-static void xd_sh_init() {
+
+/**
+ * @brief Shell initializer function, must be called first thing in main.
+ *
+ * @param argc Number of arguments in the argument array.
+ * @param argv The argument array.
+ */
+static void xd_sh_init(int argc, char **argv) {
+  // parse arguments
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_sh_help();
+      exit(EXIT_SUCCESS);
+    }
+  }
+
+  char *command_string = NULL;
+  char *file_to_parse = NULL;
+  FILE *input_file = NULL;
+
+  opterr = 0;
+  int opt_char;
+  while ((opt_char = getopt(argc, argv, "+:c:f:")) != -1) {
+    switch (opt_char) {
+      case 'c':
+        command_string = optarg;
+        break;
+      case 'f':
+        file_to_parse = optarg;
+        break;
+      case ':':
+        fprintf(stderr, "xd-shell: -%c: option requires an argument\n", optopt);
+        xd_sh_usage();
+        exit(XD_SH_EXIT_CODE_USAGE);
+      case '?':
+      default:
+        fprintf(stderr, "xd-shell: -%c: invalid option\n",
+                optopt != 0 ? optopt : '?');
+        xd_sh_usage();
+        exit(XD_SH_EXIT_CODE_USAGE);
+    }
+  }
+
+  if (command_string != NULL && file_to_parse != NULL) {
+    fprintf(stderr, "xd-shell: options -c and -f cannot be used together\n");
+    xd_sh_usage();
+    exit(XD_SH_EXIT_CODE_USAGE);
+  }
+
+  if (optind < argc) {
+    fprintf(stderr, "xd-shell: unexpected argument: %s\n", argv[optind]);
+    xd_sh_usage();
+    exit(XD_SH_EXIT_CODE_USAGE);
+  }
+
+  if (file_to_parse != NULL) {
+    input_file = fopen(file_to_parse, "r");
+    if (input_file == NULL) {
+      fprintf(stderr, "xd-shell: %s: %s\n", file_to_parse, strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+  }
+
   xd_sh_is_interactive = (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO));
+  if (command_string != NULL || file_to_parse != NULL) {
+    xd_sh_is_interactive = 0;
+  }
   pid_t pid = getpid();
   pid_t pgid = getpgrp();
 
@@ -164,8 +306,22 @@ static void xd_sh_init() {
   if (xd_sh_is_interactive) {
     yylex_scan_stdin_interactive();
   }
+  else if (command_string != NULL) {
+    xd_string_t *str = xd_string_create();
+    xd_string_append_str(str, command_string);
+    xd_string_append_chr(str, '\n');
+    yylex_scan_string(str->str);
+    xd_string_destroy(str);
+  }
+  else if (input_file != NULL) {
+    yylex_scan_file(input_file);
+  }
   else {
     yylex_scan_stdin_noninteractive();
+  }
+
+  if (xd_sh_is_interactive) {
+    xd_sh_ascii_art();
   }
 }  // xd_sh_init()
 
@@ -324,6 +480,7 @@ static int xd_sh_run() {
 /**
  * @brief Program entry point.
  */
-int main() {
+int main(int argc, char **argv) {
+  xd_sh_init(argc, argv);
   return xd_sh_run();
 }  // main()
