@@ -79,6 +79,12 @@
 // Function Declarations
 // ========================
 
+/**
+ * @brief Rebuilds `xd_sh_prompt` with the current user, host and working
+ * directory.
+ */
+void xd_sh_update_prompt();
+
 // ========================
 // Variables
 // ========================

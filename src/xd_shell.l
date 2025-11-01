@@ -561,6 +561,7 @@ static int xd_getc() {
   if (xd_interactive_next_char == NULL || *xd_interactive_next_char == '\0') {
     errno = 0;
     if (!xd_line_cont && (YYSTATE == INITIAL || YYSTATE == ARG_STATE)) {
+      xd_sh_update_prompt();
       xd_readline_prompt = xd_sh_prompt;
     }
     else {

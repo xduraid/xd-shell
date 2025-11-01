@@ -16,6 +16,39 @@
 #ifndef XD_UTILS_H
 #define XD_UTILS_H
 
+// ========================
+// Macros
+// ========================
+
+/**
+ * @brief ANSI escape sequence for bright red foreground text.
+ */
+#define XD_UTILS_CNSOL_FG_RED "\x1b[91m"
+
+/**
+ * @brief ANSI escape sequence for bright green foreground text.
+ */
+#define XD_UTILS_CNSOL_FG_GREEN "\x1b[92m"
+
+/**
+ * @brief ANSI escape sequence for bright blue foreground text.
+ */
+#define XD_UTILS_CNSOL_FG_BLUE "\x1b[94m"
+
+/**
+ * @brief ANSI escape sequence for bright magenta foreground text.
+ */
+#define XD_UTILS_CNSOL_FG_MAGENTA "\x1b[95m"
+
+/**
+ * @brief ANSI escape sequence that resets terminal attributes.
+ */
+#define XD_UTILS_CNSOL_RESET "\x1b[0m"
+
+// ========================
+// Function Declarations
+// ========================
+
 /**
  * @brief Parse a string into a `long` using `strtol` with strict validation.
  *

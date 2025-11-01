@@ -36,6 +36,7 @@
 #include "xd_jobs.h"
 #include "xd_readline.h"
 #include "xd_string.h"
+#include "xd_utils.h"
 #include "xd_vars.h"
 
 // ========================
@@ -472,6 +473,42 @@ static int xd_sh_run() {
 // ========================
 // Public Functions
 // ========================
+
+void xd_sh_update_prompt() {
+  struct passwd *pwd = getpwuid(getuid());
+  const char *username = (pwd == NULL) ? "" : pwd->pw_name;
+  char prompt_char = (strcmp(username, "root") == 0) ? '#' : '$';
+
+  char hostname[PATH_MAX] = {0};
+  if (gethostname(hostname, PATH_MAX) == -1) {
+    hostname[0] = '\0';
+  }
+
+  char cwd[PATH_MAX] = {0};
+  if (getcwd(cwd, PATH_MAX) == NULL) {
+    cwd[0] = '\0';
+  }
+
+  const char *HOME = xd_vars_get("HOME");
+  int home_len = (HOME == NULL) ? 0 : (int)strlen(HOME);
+
+  int use_tilde = 0;
+  if (home_len > 0 && HOME[home_len - 1] != '/' &&
+      strncmp(HOME, cwd, home_len) == 0 &&
+      (cwd[home_len] == '/' || cwd[home_len] == '\0')) {
+    use_tilde = 1;
+  }
+  else {
+    home_len = 0;
+  }
+
+  snprintf(xd_sh_prompt, XD_SH_PROMPT_MAX_LENGTH,
+           XD_UTILS_CNSOL_FG_RED "%s@%s" XD_UTILS_CNSOL_RESET
+                                 ":" XD_UTILS_CNSOL_FG_BLUE
+                                 "%s%s" XD_UTILS_CNSOL_RESET "%c ",
+           username, hostname, use_tilde ? "~" : "", cwd + home_len,
+           prompt_char);
+}  // xd_sh_update_prompt()
 
 // ========================
 // Main
