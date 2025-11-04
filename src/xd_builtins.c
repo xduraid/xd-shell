@@ -131,6 +131,10 @@ static void xd_exit_usage();
 static void xd_exit_help();
 static int xd_exit(int argc, char **argv);
 
+static void xd_logout_usage();
+static void xd_logout_help();
+static int xd_logout(int argc, char **argv);
+
 // ========================
 // Variables
 // ========================
@@ -155,6 +159,7 @@ static const xd_builtin_mapping_t xd_builtins[] = {
     {"history",  xd_history },
     {"source",   xd_source  },
     {"exit",     xd_exit    },
+    {"logout",   xd_logout  },
 };
 
 /**
@@ -1711,6 +1716,70 @@ static int xd_exit(int argc, char **argv) {
   fflush(stderr);
   exit(exit_code);
 }  // xd_exit()
+
+/**
+ * @brief Prints usage information for the `logout` builtin.
+ */
+static void xd_logout_usage() {
+  fprintf(stderr, "logout: usage: logout [n]\n");
+
+}  // xd_logout_usage()
+
+/**
+ * @brief Prints detailed help information for the `logout` builtin.
+ */
+static void xd_logout_help() {
+  printf(
+      "logout: logout [n]\n"
+      "    Exit the login shell.\n"
+      "\n"
+      "    Exits the login shell with a status of n. If n is omitted, the\n"
+      "    exit status is that of the last command executed.\n");
+}  // xd_logout_help()
+
+/**
+ * @brief Executor of `logout` builtin command.
+ */
+static int xd_logout(int argc, char **argv) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0) {
+      xd_logout_help();
+      return EXIT_SUCCESS;
+    }
+  }
+
+  if (!xd_sh_is_login) {
+    fprintf(stderr, "xd-shell: logout: not login shell\n");
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  if (xd_sh_is_interactive) {
+    puts("logout");
+  }
+
+  if (argc > 2) {
+    fprintf(stderr, "xd-shell: logout: too many arguments\n");
+    xd_logout_usage();
+    return XD_SH_EXIT_CODE_USAGE;
+  }
+
+  int exit_code = xd_sh_last_exit_code;
+  if (argc == 2) {
+    long num = -1;
+    if (xd_utils_strtol(argv[1], &num) == -1) {
+      fprintf(stderr, "xd-shell: logout: %s: numeric argument required\n",
+              argv[1]);
+      exit_code = XD_SH_EXIT_CODE_USAGE;
+    }
+    else {
+      exit_code = (int)(num & XD_EXIT_CODE_MASK);
+    }
+  }
+
+  fflush(stdout);
+  fflush(stderr);
+  exit(exit_code);
+}  // xd_logout()
 
 // ========================
 // Public Functions
