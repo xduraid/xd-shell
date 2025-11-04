@@ -509,7 +509,11 @@ static xd_string_t *xd_temp_str = NULL;
     xd_input_stack_pop();
     if (xd_input_stack->length == 0) {
       if (xd_sh_is_interactive) {
-        printf("exit\n");
+        const char *exit_str = "exit";
+        if (xd_sh_is_login) {
+          exit_str = "logout";
+        }
+        puts(exit_str);
         fflush(stdout);
       }
       yyterminate();

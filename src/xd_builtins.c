@@ -1681,7 +1681,11 @@ static int xd_exit(int argc, char **argv) {
   }
 
   if (xd_sh_is_interactive) {
-    printf("exit\n");
+    const char *exit_str = "exit";
+    if (xd_sh_is_login) {
+      exit_str = "logout";
+    }
+    puts(exit_str);
   }
 
   if (argc > 2) {
