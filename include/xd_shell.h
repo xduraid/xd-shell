@@ -90,6 +90,11 @@ void xd_sh_update_prompt();
 // ========================
 
 /**
+ * @brief Indicates whether the shell is a login shell (non-zero) or not (zero).
+ */
+extern int xd_sh_is_login;
+
+/**
  * @brief Indicates whether the shell is interactive (non-zero) or not (zero).
  */
 extern int xd_sh_is_interactive;

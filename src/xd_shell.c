@@ -52,6 +52,10 @@ static void xd_sh_destroy() __attribute__((destructor));
 static void xd_sh_sigint_handler(int signum);
 static void xd_sh_sigchld_handler(int signum);
 static int xd_sh_setup_signal_handlers();
+static const char *xd_sh_resolve_home();
+static int xd_sh_source_file(const char *path);
+static void xd_sh_source_startup_files();
+static void xd_sh_set_default_env();
 static int xd_sh_run();
 
 // flex and bison functions
@@ -71,6 +75,7 @@ extern void yyparse_cleanup();
 // Public Variables
 // ========================
 
+int xd_sh_is_login = 0;
 int xd_sh_is_interactive = 0;
 int xd_sh_is_subshell = 0;
 char xd_sh_prompt[XD_SH_PROMPT_MAX_LENGTH] = {0};
@@ -139,7 +144,7 @@ static void xd_sh_ascii_art() {
  * @brief Prints usage information for the shell executable.
  */
 static void xd_sh_usage() {
-  fprintf(stderr, "xd_shell: usage: xd_shell [-c string | -f file]\n");
+  fprintf(stderr, "xd_shell: usage: xd_shell [-l] [-c string | -f file]\n");
 }  // xd_sh_usage()
 
 /**
@@ -148,7 +153,8 @@ static void xd_sh_usage() {
 static void xd_sh_help() {
   xd_sh_ascii_art();
   printf(
-      "usage: xd_shell [-c string | -f file]\n"
+      "usage: xd_shell [-l] [-c string | -f file]\n"
+      "  -l          run as a login shell\n"
       "  -c string   execute the commands provided in the string argument\n"
       "  -f file     execute commands by parsing the specified file\n"
       "\n"
@@ -178,19 +184,26 @@ static void xd_sh_init(int argc, char **argv) {
     }
   }
 
+  if (argv[0][0] == '-') {
+    xd_sh_is_login = 1;
+  }
+
   char *command_string = NULL;
   char *file_to_parse = NULL;
   FILE *input_file = NULL;
 
   opterr = 0;
   int opt_char;
-  while ((opt_char = getopt(argc, argv, "+:c:f:")) != -1) {
+  while ((opt_char = getopt(argc, argv, "+:lc:f:")) != -1) {
     switch (opt_char) {
       case 'c':
         command_string = optarg;
         break;
       case 'f':
         file_to_parse = optarg;
+        break;
+      case 'l':
+        xd_sh_is_login = 1;
         break;
       case ':':
         fprintf(stderr, "xd-shell: -%c: option requires an argument\n", optopt);
@@ -266,6 +279,7 @@ static void xd_sh_init(int argc, char **argv) {
   xd_jobs_init();
   xd_aliases_init();
   xd_vars_init();
+  xd_sh_set_default_env();
   yyparse_initialize();
   xd_arg_expander_init();
 
@@ -280,13 +294,8 @@ static void xd_sh_init(int argc, char **argv) {
     char path[PATH_MAX];
     const char *histfile = xd_vars_get("HISTFILE");
     if (histfile == NULL) {
-      const char *HOME = xd_vars_get("HOME");
-      if (HOME == NULL) {
-        struct passwd *pwd = getpwuid(getuid());
-        if (pwd != NULL) {
-          HOME = pwd->pw_dir;
-        }
-      }
+      const char *HOME = xd_sh_resolve_home();
+
       if (HOME != NULL) {
         snprintf(path, PATH_MAX, "%s/%s", HOME, XD_SH_DEF_HISTFILE_NAME);
       }
@@ -321,9 +330,11 @@ static void xd_sh_init(int argc, char **argv) {
     yylex_scan_stdin_noninteractive();
   }
 
-  if (xd_sh_is_interactive) {
+  if (xd_sh_is_interactive && xd_sh_is_login) {
     xd_sh_ascii_art();
   }
+
+  xd_sh_source_startup_files();
 }  // xd_sh_init()
 
 /**
@@ -459,6 +470,97 @@ static int xd_sh_setup_signal_handlers() {
   }
   return 0;
 }  // xd_sh_setup_signal_handlers()
+
+/**
+ * @brief Resolves the user's home directory.
+ *
+ * @return Pointer to the home directory path or `NULL` when unavailable.
+ */
+static const char *xd_sh_resolve_home() {
+  char *HOME = xd_vars_get("HOME");
+  if (HOME == NULL) {
+    struct passwd *pwd = getpwuid(getuid());
+    if (pwd != NULL) {
+      HOME = pwd->pw_dir;
+    }
+  }
+  return HOME;
+}  // xd_sh_resolve_home()
+
+/**
+ * @brief Pushes a source file onto the lexer's input stack.
+ *
+ * @param path Path to the file to be pushed.
+ *
+ * @return `0` on success, `-1` on failure.
+ */
+static int xd_sh_source_file(const char *path) {
+  if (path == NULL) {
+    return -1;
+  }
+  if (xd_utils_is_bin(path) == 1) {
+    return -1;
+  }
+  FILE *file = fopen(path, "r");
+  if (file == NULL) {
+    return -1;
+  }
+  xd_sh_is_interactive = 0;
+  yylex_scan_file(file);
+  return 0;
+}  // xd_sh_source_file()
+
+/**
+ * @brief Pushes startup script files onto the lexer input stack.
+ */
+static void xd_sh_source_startup_files() {
+  const char *home = xd_sh_resolve_home();
+  if (home == NULL) {
+    return;
+  }
+  char path[PATH_MAX];
+  if (xd_sh_is_login) {
+    snprintf(path, PATH_MAX, "%s/.xdsh_profile", home);
+  }
+  else if (xd_sh_is_interactive) {
+    snprintf(path, PATH_MAX, "%s/.xdshrc", home);
+  }
+  xd_sh_source_file(path);
+}  // xd_sh_source_startup_files()
+
+/**
+ * @brief Sets the default environment for the shell if not already defined.
+ */
+static void xd_sh_set_default_env() {
+  struct passwd *pwd = getpwuid(getuid());
+
+  if (xd_vars_get("HOME") == NULL && pwd != NULL && pwd->pw_dir != NULL) {
+    xd_vars_put("HOME", pwd->pw_dir, 1);
+  }
+  if (xd_vars_get("USER") == NULL && pwd != NULL && pwd->pw_name != NULL) {
+    xd_vars_put("USER", pwd->pw_name, 1);
+  }
+  if (xd_vars_get("LOGNAME") == NULL && pwd != NULL && pwd->pw_name != NULL) {
+    xd_vars_put("LOGNAME", pwd->pw_name, 1);
+  }
+  if (xd_vars_get("PATH") == NULL) {
+    xd_vars_put("PATH", XD_SH_DEF_PATH, 1);
+  }
+
+  char *shlvl_str = xd_vars_get("SHLVL");
+  long shlvl = 0;
+  if (shlvl_str != NULL) {
+    xd_utils_strtol(shlvl_str, &shlvl);
+  }
+  long new_shlvl = xd_sh_is_login ? 1 : shlvl + 1;
+  if (new_shlvl < 1) {
+    new_shlvl = 1;
+  }
+
+  char shlvl_buf[XD_STR_DEF_CAP];
+  snprintf(shlvl_buf, XD_STR_DEF_CAP, "%ld", new_shlvl);
+  xd_vars_put("SHLVL", shlvl_buf, 1);
+}  // xd_sh_set_default_env()
 
 /**
  * @brief Runs the shell.
