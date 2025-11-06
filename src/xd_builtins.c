@@ -1530,42 +1530,20 @@ static int xd_history(int argc, char **argv) {
     xd_readline_history_clear();
   }
 
-  char path[PATH_MAX];
   if (file_arg == NULL) {
-    const char *histfile = xd_vars_get("HISTFILE");
-    if (histfile == NULL) {
-      const char *HOME = xd_vars_get("HOME");
-      if (HOME == NULL) {
-        struct passwd *pwd = getpwuid(getuid());
-        if (pwd != NULL) {
-          HOME = pwd->pw_dir;
-        }
-      }
-      if (HOME != NULL) {
-        snprintf(path, PATH_MAX, "%s/%s", HOME, XD_SH_DEF_HISTFILE_NAME);
-      }
-      else {
-        snprintf(path, PATH_MAX, "%s", XD_SH_DEF_HISTFILE_NAME);
-      }
-    }
-    else {
-      snprintf(path, PATH_MAX, "%s", histfile);
-    }
-  }
-  else {
-    snprintf(path, PATH_MAX, "%s", file_arg);
+    file_arg = xd_vars_get("HISTFILE");
   }
 
   int ret = 0;
   switch (opt_char) {
     case 'a':
-      ret = xd_readline_history_save_to_file(path, 1);
+      ret = xd_readline_history_save_to_file(file_arg, 1);
       break;
     case 'w':
-      ret = xd_readline_history_save_to_file(path, 0);
+      ret = xd_readline_history_save_to_file(file_arg, 0);
       break;
     case 'r':
-      ret = xd_readline_history_load_from_file(path);
+      ret = xd_readline_history_load_from_file(file_arg);
       break;
     default:
       ret = -1;
