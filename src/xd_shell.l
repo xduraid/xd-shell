@@ -124,6 +124,12 @@ static int xd_input_interrupted = 0;
 static int xd_line_cont = 0;
 
 /**
+ * @brief Indicates whether the scanner reached an `EOF` in non-interactive mode.
+ */
+static int xd_reached_eof = 0;
+
+
+/**
  * @brief Stack of input sources currently being scanned.
  */
 static xd_list_t *xd_input_stack = NULL;
@@ -541,6 +547,11 @@ static xd_string_t *xd_temp_str = NULL;
  * pending.
  */
 static int xd_getc() {
+  if (xd_reached_eof) {
+    xd_reached_eof = 0;
+    return EOF;
+  }
+
   if (xd_sh_is_interrupted) {
     xd_sh_is_interrupted = 0;
     xd_input_interrupted = 1;
@@ -554,11 +565,20 @@ static int xd_getc() {
 
     xd_input_stack_frame_t *top_frame = xd_input_stack->head->data;
     if (top_frame->input_type == XD_INPUT_TYPE_FILE) {
-      return fgetc(top_frame->file);
+      char chr = fgetc(top_frame->file);
+      if (chr == EOF) {
+        xd_reached_eof = 1;
+        return '\n';
+      }
+      return chr;
     }
     else {
       char chr = top_frame->str[top_frame->str_pos++];
-      return chr == '\0' ? EOF : chr;
+      if (chr == '\0') {
+        xd_reached_eof = 1;
+        return '\n';
+      }
+      return chr;
     }
   }
 

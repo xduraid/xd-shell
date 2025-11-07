@@ -317,11 +317,7 @@ static void xd_sh_init(int argc, char **argv) {
     yylex_scan_stdin_interactive();
   }
   else if (command_string != NULL) {
-    xd_string_t *str = xd_string_create();
-    xd_string_append_str(str, command_string);
-    xd_string_append_chr(str, '\n');
-    yylex_scan_string(str->str);
-    xd_string_destroy(str);
+    yylex_scan_string(command_string);
   }
   else if (input_file != NULL) {
     yylex_scan_file(input_file);
