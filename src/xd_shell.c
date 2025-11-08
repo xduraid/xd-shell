@@ -517,11 +517,12 @@ static void xd_sh_source_startup_files() {
   char path[PATH_MAX];
   if (xd_sh_is_login) {
     snprintf(path, PATH_MAX, "%s/.xdsh_profile", home);
+    xd_sh_source_file(path);
   }
   else if (xd_sh_is_interactive) {
     snprintf(path, PATH_MAX, "%s/.xdshrc", home);
+    xd_sh_source_file(path);
   }
-  xd_sh_source_file(path);
 }  // xd_sh_source_startup_files()
 
 /**
