@@ -128,6 +128,10 @@ static int xd_line_cont = 0;
  */
 static int xd_reached_eof = 0;
 
+/**
+ * @brief Indicates the lexer hit a fatal error and already reported it.
+ */
+int xd_lex_fatal_error = 0;
 
 /**
  * @brief Stack of input sources currently being scanned.
@@ -449,6 +453,7 @@ static xd_string_t *xd_temp_str = NULL;
       fprintf(stderr,
               "xd-shell: unexpected EOF while waiting for matching '''\n");
       xd_sh_last_exit_code = 2;
+      xd_lex_fatal_error = 1;
       yyterminate();
     }
   }
@@ -466,6 +471,7 @@ static xd_string_t *xd_temp_str = NULL;
       fprintf(stderr,
               "xd-shell: unexpected EOF while waiting for matching '\"'\n");
       xd_sh_last_exit_code = 2;
+      xd_lex_fatal_error = 1;
       yyterminate();
     }
   }
@@ -483,6 +489,7 @@ static xd_string_t *xd_temp_str = NULL;
       fprintf(stderr,
               "xd-shell: unexpected EOF while waiting for matching '}'\n");
       xd_sh_last_exit_code = 2;
+      xd_lex_fatal_error = 1;
       yyterminate();
     }
   }
@@ -500,6 +507,7 @@ static xd_string_t *xd_temp_str = NULL;
       fprintf(stderr,
               "xd-shell: unexpected EOF while waiting for matching ')'\n");
       xd_sh_last_exit_code = 2;
+      xd_lex_fatal_error = 1;
       yyterminate();
     }
   }
@@ -812,6 +820,7 @@ static int xd_is_alias_being_expanded(const char *alias_name) {
  * @brief Initializes the scanner.
  */
 void yylex_initialize() {
+  xd_lex_fatal_error = 0;
   xd_input_stack = xd_list_create(xd_input_stack_frame_copy_func,
                                   xd_input_stack_frame_destroy_func,
                                   xd_input_stack_frame_cmp_func);

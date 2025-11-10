@@ -43,6 +43,7 @@ void yyerror(const char *s);
 extern void yylex_initialize();
 extern void yylex_cleanup();
 extern int yylex();
+extern int xd_lex_fatal_error;
 
 // ========================
 // Variables
@@ -399,6 +400,9 @@ void yyparse_cleanup() {
  */
 void yyerror(const char *s) {
   (void)s;
+  if (xd_lex_fatal_error) {
+    return; // lexer already reported a fatal error
+  }
   if (yychar == LEX_INTR) {
     return; // don't print error message on `SIGINTR`
   }
