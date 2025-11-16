@@ -13,6 +13,12 @@
 #  ==============================================================================
 #
 
+PREFIX ?= /usr/local
+BINDIR ?= $(PREFIX)/bin
+DESTDIR ?=
+
+INSTALL ?= install
+
 SRC_DIR = src
 INCLUDE_DIR = include
 BUILD_DIR = build
@@ -55,11 +61,12 @@ OBJS = $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRCS)) \
 			 $(BISON_OBJ) \
 			 $(FLEX_OBJ)
 
-TARGET = $(BIN_DIR)/xd_shell
+TARGET_NAME = xd_shell
+TARGET = $(BIN_DIR)/$(TARGET_NAME)
 
 .SUFFIXES:
 .SECONDARY:
-.PHONY: all release debug valgrind run_tests clean deep_clean help
+.PHONY: all release debug valgrind run_tests clean deep_clean install uninstall help
 
 all: debug
 
@@ -105,6 +112,14 @@ clean:
 deep_clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
 
+install: release
+	@mkdir -p $(DESTDIR)$(BINDIR)
+	$(INSTALL) $(TARGET) $(DESTDIR)$(BINDIR)/$(TARGET_NAME)
+	$(MAKE) deep_clean
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/$(TARGET_NAME)
+
 help:
 	@echo "Available targets:"
 	@echo "  all         - Build the project (default: debug)"
@@ -114,4 +129,6 @@ help:
 	@echo "  run_tests   - Run all tests"
 	@echo "  clean       - Remove intermediate build artifacts"
 	@echo "  deep_clean  - Remove all generated files"
+	@echo "  install     - Build in release mode and install the binary to $(DESTDIR)$(BINDIR)"
+	@echo "  uninstall   - Remove the installed binary from $(DESTDIR)$(BINDIR)"
 	@echo "  help        - Show this message"
