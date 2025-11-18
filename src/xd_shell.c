@@ -144,7 +144,7 @@ static void xd_sh_ascii_art() {
  * @brief Prints usage information for the shell executable.
  */
 static void xd_sh_usage() {
-  fprintf(stderr, "xd_shell: usage: xd_shell [-l] [-c string | -f file]\n");
+  fprintf(stderr, "xd_shell: usage: xd_shell [-l] [-c string | script]\n");
 }  // xd_sh_usage()
 
 /**
@@ -153,10 +153,10 @@ static void xd_sh_usage() {
 static void xd_sh_help() {
   xd_sh_ascii_art();
   printf(
-      "usage: xd_shell [-l] [-c string | -f file]\n"
+      "usage: xd_shell [-l] [-c string | script]\n"
       "  -l          run as a login shell\n"
       "  -c string   execute the commands provided in the string argument\n"
-      "  -f file     execute commands by parsing the specified file\n"
+      "  script      execute commands by parsing the specified file\n"
       "\n"
       "Without options, xd-shell reads from standard input. When both stdin "
       "and\n"
@@ -189,18 +189,15 @@ static void xd_sh_init(int argc, char **argv) {
   }
 
   char *command_string = NULL;
-  char *file_to_parse = NULL;
+  char *script_path = NULL;
   FILE *input_file = NULL;
 
   opterr = 0;
   int opt_char;
-  while ((opt_char = getopt(argc, argv, "+:lc:f:")) != -1) {
+  while ((opt_char = getopt(argc, argv, "+:lc:")) != -1) {
     switch (opt_char) {
       case 'c':
         command_string = optarg;
-        break;
-      case 'f':
-        file_to_parse = optarg;
         break;
       case 'l':
         xd_sh_is_login = 1;
@@ -218,8 +215,12 @@ static void xd_sh_init(int argc, char **argv) {
     }
   }
 
-  if (command_string != NULL && file_to_parse != NULL) {
-    fprintf(stderr, "xd-shell: options -c and -f cannot be used together\n");
+  if (optind < argc) {
+    script_path = argv[optind++];
+  }
+
+  if (command_string != NULL && script_path != NULL) {
+    fprintf(stderr, "xd-shell: option -c cannot be used with a script file\n");
     xd_sh_usage();
     exit(XD_SH_EXIT_CODE_USAGE);
   }
@@ -230,16 +231,16 @@ static void xd_sh_init(int argc, char **argv) {
     exit(XD_SH_EXIT_CODE_USAGE);
   }
 
-  if (file_to_parse != NULL) {
-    input_file = fopen(file_to_parse, "r");
+  if (script_path != NULL) {
+    input_file = fopen(script_path, "r");
     if (input_file == NULL) {
-      fprintf(stderr, "xd-shell: %s: %s\n", file_to_parse, strerror(errno));
+      fprintf(stderr, "xd-shell: %s: %s\n", script_path, strerror(errno));
       exit(EXIT_FAILURE);
     }
   }
 
   xd_sh_is_interactive = (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO));
-  if (command_string != NULL || file_to_parse != NULL) {
+  if (command_string != NULL || script_path != NULL) {
     xd_sh_is_interactive = 0;
   }
   pid_t pid = getpid();
