@@ -525,7 +525,7 @@ static void xd_execute_command() {
     exit(EXIT_SUCCESS);
   }
 
-  const char *executable = xd_command->argv[0];
+  char *executable = xd_command->argv[0];
 
   if (xd_builtins_is_builtin(executable)) {
     int builtin_exit_code =
@@ -541,11 +541,36 @@ static void xd_execute_command() {
 
   char **envp = xd_vars_create_envp();
 
-  const char *exec_path = resolved_path != NULL ? resolved_path : executable;
+  char *exec_path = resolved_path != NULL ? resolved_path : executable;
   int exec_has_slash = (strchr(exec_path, '/') != NULL);
   execve(exec_path, xd_command->argv, envp);
 
-  // execvp failed
+  if (errno == ENOEXEC) {
+    int new_argc = xd_command->argc + 1;
+    char **argv_with_shell = (char **)malloc(sizeof(char *) * (new_argc + 1));
+    if (argv_with_shell == NULL) {
+      fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+              strerror(errno));
+      free(resolved_path);
+      xd_vars_destroy_envp(envp);
+      exit(EXIT_FAILURE);
+    }
+
+    argv_with_shell[0] = xd_sh_path;
+    argv_with_shell[1] = exec_path;
+    for (int i = 1; i < xd_command->argc; i++) {
+      argv_with_shell[i + 1] = xd_command->argv[i];
+    }
+    argv_with_shell[new_argc] = NULL;
+
+    execve(xd_sh_path, argv_with_shell, envp);
+
+    fprintf(stderr, "xd-shell: %s: %s\n", executable, strerror(errno));
+    free((void *)argv_with_shell);
+    free(resolved_path);
+    xd_vars_destroy_envp(envp);
+    exit(XD_SH_EXIT_CODE_CANNOT_EXECUTE);
+  }
 
   // check if the target is a directory
   struct stat file_stat;
