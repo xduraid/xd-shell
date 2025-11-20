@@ -232,6 +232,11 @@ static void xd_sh_init(int argc, char **argv) {
   }
 
   if (script_path != NULL) {
+    if (xd_utils_is_bin(script_path) == 1) {
+      fprintf(stderr, "xd-shell: source: %s: cannot execute binary file\n",
+              script_path);
+      exit(EXIT_FAILURE);
+    }
     input_file = fopen(script_path, "r");
     if (input_file == NULL) {
       fprintf(stderr, "xd-shell: %s: %s\n", script_path, strerror(errno));
