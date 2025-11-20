@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <termios.h>
@@ -189,7 +190,7 @@ static void xd_sh_init(int argc, char **argv) {
   }
 
   char *command_string = NULL;
-  char *script_path = NULL;
+  char *script_arg = NULL;
   FILE *input_file = NULL;
 
   opterr = 0;
@@ -216,10 +217,10 @@ static void xd_sh_init(int argc, char **argv) {
   }
 
   if (optind < argc) {
-    script_path = argv[optind++];
+    script_arg = argv[optind++];
   }
 
-  if (command_string != NULL && script_path != NULL) {
+  if (command_string != NULL && script_arg != NULL) {
     fprintf(stderr, "xd-shell: option -c cannot be used with a script file\n");
     xd_sh_usage();
     exit(XD_SH_EXIT_CODE_USAGE);
@@ -231,21 +232,34 @@ static void xd_sh_init(int argc, char **argv) {
     exit(XD_SH_EXIT_CODE_USAGE);
   }
 
-  if (script_path != NULL) {
+  xd_vars_init();
+  xd_sh_set_default_env();
+
+  if (script_arg != NULL) {
+    int slash_found = (strchr(script_arg, '/') != NULL);
+    char *resolved_path = NULL;
+    if (!slash_found) {
+      resolved_path = xd_sh_path_search(script_arg);
+    }
+
+    char *script_path = resolved_path != NULL ? resolved_path : script_arg;
     if (xd_utils_is_bin(script_path) == 1) {
-      fprintf(stderr, "xd-shell: source: %s: cannot execute binary file\n",
+      fprintf(stderr, "xd-shell: %s: cannot execute binary file\n",
               script_path);
+      free(resolved_path);
       exit(EXIT_FAILURE);
     }
     input_file = fopen(script_path, "r");
     if (input_file == NULL) {
       fprintf(stderr, "xd-shell: %s: %s\n", script_path, strerror(errno));
+      free(resolved_path);
       exit(EXIT_FAILURE);
     }
+    free(resolved_path);
   }
 
   xd_sh_is_interactive = (isatty(STDIN_FILENO) && isatty(STDOUT_FILENO));
-  if (command_string != NULL || script_path != NULL) {
+  if (command_string != NULL || input_file != NULL) {
     xd_sh_is_interactive = 0;
   }
   pid_t pid = getpid();
@@ -284,8 +298,6 @@ static void xd_sh_init(int argc, char **argv) {
   xd_sh_pgid = pgid;
   xd_jobs_init();
   xd_aliases_init();
-  xd_vars_init();
-  xd_sh_set_default_env();
   yyparse_initialize();
   xd_arg_expander_init();
 
@@ -614,6 +626,74 @@ void xd_sh_update_prompt() {
            username, hostname, use_tilde ? "~" : "", cwd + home_len,
            prompt_char);
 }  // xd_sh_update_prompt()
+
+char *xd_sh_path_search(const char *name) {
+  if (name == NULL || *name == '\0') {
+    return NULL;
+  }
+  if (strchr(name, '/')) {
+    return NULL;
+  }
+
+  const char *PATH = xd_vars_get("PATH");
+  if (PATH == NULL) {
+    PATH = XD_SH_DEF_PATH;
+  }
+
+  int name_len = (int)strlen(name);
+  const char *cursor = PATH;
+  char path_buffer[PATH_MAX];
+
+  while (1) {
+    const char *colon = strchr(cursor, ':');
+    int segment_len =
+        (colon == NULL) ? (int)strlen(cursor) : (int)(colon - cursor);
+
+    const char *dir_path;
+    int dir_len;
+    if (segment_len == 0) {
+      // empty, used current directory
+      dir_path = ".";
+      dir_len = 1;
+    }
+    else {
+      dir_path = cursor;
+      dir_len = segment_len;
+    }
+
+    int need_slash = (dir_path[dir_len - 1] != '/');
+    int total_len = dir_len + need_slash + name_len;
+
+    if (total_len < PATH_MAX) {
+      memcpy(path_buffer, dir_path, dir_len);
+      if (need_slash) {
+        path_buffer[dir_len] = '/';
+      }
+      memcpy(path_buffer + dir_len + need_slash, name, name_len);
+      path_buffer[total_len] = '\0';
+
+      if (access(path_buffer, F_OK) == 0) {
+        struct stat file_stat;
+        if (stat(path_buffer, &file_stat) == 0 && S_ISREG(file_stat.st_mode)) {
+          char *ret = strdup(path_buffer);
+          if (ret == NULL) {
+            fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
+                    strerror(errno));
+            exit(EXIT_FAILURE);
+          }
+          return ret;
+        }
+      }
+    }
+
+    if (colon == NULL) {
+      break;
+    }
+    cursor = colon + 1;
+  }
+
+  return NULL;
+}  // xd_sh_path_search()
 
 // ========================
 // Main

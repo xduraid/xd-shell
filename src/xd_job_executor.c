@@ -54,7 +54,6 @@ static int xd_redirect_input();
 static int xd_redirect_output();
 static int xd_redirect_error();
 
-static char *xd_path_search(const char *name);
 static void xd_execute_command();
 
 static void xd_execute_builtin_no_fork();
@@ -405,87 +404,6 @@ static int xd_redirect_error() {
 }  // xd_redirect_error()
 
 /**
- * @brief Search `PATH` for an executable with the passed name.
- *
- * @param name The executable name to search for.
- *
- * @return A newly allocated string containing the matched path, or `NULL` if
- * not found or if `name` is invalid.
- *
- * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
- *
- * @note The caller is responsible for freeing the allocated memory by calling
- * `free()` and passing it the returned pointer.
- */
-static char *xd_path_search(const char *name) {
-  if (name == NULL || *name == '\0') {
-    return NULL;
-  }
-  if (strchr(name, '/')) {
-    return NULL;
-  }
-
-  const char *PATH = xd_vars_get("PATH");
-  if (PATH == NULL) {
-    PATH = XD_SH_DEF_PATH;
-  }
-
-  int name_len = (int)strlen(name);
-  const char *cursor = PATH;
-  char path_buffer[PATH_MAX];
-
-  while (1) {
-    const char *colon = strchr(cursor, ':');
-    int segment_len =
-        (colon == NULL) ? (int)strlen(cursor) : (int)(colon - cursor);
-
-    const char *dir_path;
-    int dir_len;
-    if (segment_len == 0) {
-      // empty, used current directory
-      dir_path = ".";
-      dir_len = 1;
-    }
-    else {
-      dir_path = cursor;
-      dir_len = segment_len;
-    }
-
-    int need_slash = (dir_path[dir_len - 1] != '/');
-    int total_len = dir_len + need_slash + name_len;
-
-    if (total_len < PATH_MAX) {
-      memcpy(path_buffer, dir_path, dir_len);
-      if (need_slash) {
-        path_buffer[dir_len] = '/';
-      }
-      memcpy(path_buffer + dir_len + need_slash, name, name_len);
-      path_buffer[total_len] = '\0';
-
-      if (access(path_buffer, X_OK) == 0) {
-        struct stat file_stat;
-        if (stat(path_buffer, &file_stat) == 0 && S_ISREG(file_stat.st_mode)) {
-          char *ret = strdup(path_buffer);
-          if (ret == NULL) {
-            fprintf(stderr, "xd-shell: failed to allocate memory: %s\n",
-                    strerror(errno));
-            exit(EXIT_FAILURE);
-          }
-          return ret;
-        }
-      }
-    }
-
-    if (colon == NULL) {
-      break;
-    }
-    cursor = colon + 1;
-  }
-
-  return NULL;
-}  // xd_path_search()
-
-/**
  * @brief Executes the current command (`xd_command`).
  */
 static void xd_execute_command() {
@@ -536,7 +454,7 @@ static void xd_execute_command() {
   int slash_found = (strchr(executable, '/') != NULL);
   char *resolved_path = NULL;
   if (!slash_found) {
-    resolved_path = xd_path_search(executable);
+    resolved_path = xd_sh_path_search(executable);
   }
 
   char **envp = xd_vars_create_envp();
@@ -594,8 +512,7 @@ static void xd_execute_command() {
     exit(XD_SH_EXIT_CODE_NOT_FOUND);
   }
 
-  // cannot be executed
-  fprintf(stderr, "xd-shell: %s: %s\n", executable, strerror(errno));
+  fprintf(stderr, "xd-shell: %s: %s\n", exec_path, strerror(errno));
   free(resolved_path);
   xd_vars_destroy_envp(envp);
   exit(XD_SH_EXIT_CODE_CANNOT_EXECUTE);

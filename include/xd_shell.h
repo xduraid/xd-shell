@@ -85,6 +85,22 @@
  */
 void xd_sh_update_prompt();
 
+/**
+ * @brief Search the directories listed in `PATH` for a file with the passed
+ * name.
+ *
+ * @param name The file name to search for.
+ *
+ * @return A newly allocated string containing the matched path, or `NULL` if
+ * not found or if `name` is invalid.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ *
+ * @note The caller is responsible for freeing the allocated memory by calling
+ * `free()` and passing it the returned pointer.
+ */
+char *xd_sh_path_search(const char *name);
+
 // ========================
 // Variables
 // ========================
