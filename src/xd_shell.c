@@ -355,6 +355,8 @@ static void xd_sh_init(int argc, char **argv) {
  * @brief Destructor, runs before exit to cleanup after the shell.
  */
 static void xd_sh_destroy() {
+  xd_jobs_sigchld_block();
+
   // save history to file
   if (xd_sh_is_interactive && getpid() == xd_sh_pid) {
     char *histfile = xd_vars_get("HISTFILE");
