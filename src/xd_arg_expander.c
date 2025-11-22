@@ -380,6 +380,7 @@ static void xd_exec_capture_output(char *arg, const char *orig_mask,
     yyparse_initialize();
 
     // setup scanner input to be the command string
+    xd_sh_is_interactive = 0;
     yylex_scan_string(cmd_str);
     free(arg);
 

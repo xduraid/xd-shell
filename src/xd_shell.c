@@ -62,8 +62,7 @@ static int xd_sh_run();
 // flex and bison functions
 extern void yylex_scan_string(char *str);
 extern void yylex_scan_file(FILE *file);
-extern void yylex_scan_stdin_interactive();
-extern void yylex_scan_stdin_noninteractive();
+extern void yylex_scan_stdin();
 extern void yyparse_initialize();
 extern int yyparse();
 extern void yyparse_cleanup();
@@ -331,17 +330,14 @@ static void xd_sh_init(int argc, char **argv) {
     xd_readline_completions_generator = xd_completions_generator;
   }
 
-  if (xd_sh_is_interactive) {
-    yylex_scan_stdin_interactive();
-  }
-  else if (command_string != NULL) {
+  if (command_string != NULL) {
     yylex_scan_string(command_string);
   }
   else if (input_file != NULL) {
     yylex_scan_file(input_file);
   }
   else {
-    yylex_scan_stdin_noninteractive();
+    yylex_scan_stdin();
   }
 
   if (xd_sh_is_interactive && xd_sh_is_login) {
@@ -521,7 +517,6 @@ static int xd_sh_source_file(const char *path) {
   if (file == NULL) {
     return -1;
   }
-  xd_sh_is_interactive = 0;
   yylex_scan_file(file);
   return 0;
 }  // xd_sh_source_file()
@@ -537,10 +532,12 @@ static void xd_sh_source_startup_files() {
   char path[PATH_MAX];
   if (xd_sh_is_login) {
     snprintf(path, PATH_MAX, "%s/.xdsh_profile", home);
+    xd_sh_is_interactive = 0;
     xd_sh_source_file(path);
   }
   else if (xd_sh_is_interactive) {
     snprintf(path, PATH_MAX, "%s/.xdshrc", home);
+    xd_sh_is_interactive = 0;
     xd_sh_source_file(path);
   }
 }  // xd_sh_source_startup_files()

@@ -55,6 +55,7 @@ typedef enum xd_input_type_t {
   XD_INPUT_TYPE_ALIAS,   // alias string source
   XD_INPUT_TYPE_STRING,  // string source (not an alias)
   XD_INPUT_TYPE_FILE,    // file source
+  XD_INPUT_TYPE_STDIN,   // stdin source
 } xd_input_type_t;
 
 /**
@@ -63,7 +64,7 @@ typedef enum xd_input_type_t {
 typedef struct xd_input_stack_frame_t {
   xd_input_type_t input_type;  // type of input
   int is_interacive;           // indicates whether input is interactive (stdin)
-  FILE *file;                  // for `XD_INPUT_TYPE_FILE`
+  FILE *file;                  // stream for `_TYPE_FILE`/`_TYPE_STDIN`
   char *str;                   // string for `_TYPE_STRING/_TYPE_ALIAS`
   char *alias_name;            // alias name
   int str_pos;                 // current offset within `str`
@@ -83,6 +84,7 @@ static int xd_input_stack_frame_cmp_func(const void *data1, const void *data2);
 static void xd_input_stack_push_string(char *str);
 static void xd_input_stack_push_alias(char *alias_name, char *alias);
 static void xd_input_stack_push_file(FILE *file);
+static void xd_input_stack_push_stdin();
 static void xd_input_stack_pop();
 static int xd_is_alias_being_expanded(const char *alias_name);
 
@@ -91,8 +93,7 @@ void yylex_cleanup();
 
 void yylex_scan_string(char *str);
 void yylex_scan_file(FILE *file);
-void yylex_scan_stdin_interactive();
-void yylex_scan_stdin_noninteractive();
+void yylex_scan_stdin();
 
 // ========================
 // Variables
@@ -566,28 +567,30 @@ static int xd_getc() {
     return EOF;
   }
 
-  if (!xd_sh_is_interactive) {
-    if (xd_input_stack == NULL || xd_input_stack->length == 0) {
-      return EOF;
-    }
+  if (xd_input_stack == NULL || xd_input_stack->length == 0) {
+    return EOF;
+  }
 
-    xd_input_stack_frame_t *top_frame = xd_input_stack->head->data;
-    if (top_frame->input_type == XD_INPUT_TYPE_FILE) {
-      char chr = fgetc(top_frame->file);
-      if (chr == EOF) {
-        xd_reached_eof = 1;
-        return '\n';
-      }
-      return chr;
+  xd_input_stack_frame_t *input_frame = xd_input_stack->head->data;
+  xd_input_type_t input_type = input_frame->input_type;
+
+  if (input_type == XD_INPUT_TYPE_FILE ||
+      (input_type == XD_INPUT_TYPE_STDIN && !xd_sh_is_interactive)) {
+    char chr = fgetc(input_frame->file);
+    if (chr == EOF) {
+      xd_reached_eof = 1;
+      return '\n';
     }
-    else {
-      char chr = top_frame->str[top_frame->str_pos++];
-      if (chr == '\0') {
-        xd_reached_eof = 1;
-        return '\n';
-      }
-      return chr;
+    return chr;
+  }
+
+  if (input_type == XD_INPUT_TYPE_ALIAS || input_type == XD_INPUT_TYPE_STRING) {
+    char chr = input_frame->str[input_frame->str_pos++];
+    if (chr == '\0') {
+      xd_reached_eof = 1;
+      return '\n';
     }
+    return chr;
   }
 
   if (xd_interactive_next_char == NULL || *xd_interactive_next_char == '\0') {
@@ -771,6 +774,22 @@ static void xd_input_stack_push_file(FILE *file) {
 }  // xd_input_stack_push_file()
 
 /**
+ * @brief Pushes stdin onto the scanner stack.
+ *
+ * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
+ */
+static void xd_input_stack_push_stdin() {
+  xd_input_stack_frame_t frame;
+  frame.input_type = XD_INPUT_TYPE_STDIN;
+  frame.file = stdin;
+  frame.str = NULL;
+  frame.alias_name = NULL;
+  frame.str_pos = 0;
+  frame.is_interacive = xd_sh_is_interactive;
+  xd_list_add_first(xd_input_stack, &frame);
+}  // xd_input_stack_push_stdin()
+
+/**
  * @brief Pops the top frame from the input stack.
  *
  * @note This function does nothing when the stack is empty.
@@ -843,9 +862,6 @@ void yylex_cleanup() {
 /**
  * @brief Pushes a string input source onto the scanner stack.
  *
- * Marks the scanner as non-interactive and copies the provided string so it
- * can be tokenised independently of the caller's buffer.
- *
  * @param str Pointer to the null-terminated string to scan.
  *
  * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
@@ -856,15 +872,11 @@ void yylex_scan_string(char *str) {
   if (str == NULL) {
     return;
   }
-  xd_sh_is_interactive = 0;
   xd_input_stack_push_string((char *)str);
 }  // yylex_scan_string()
 
 /**
  * @brief Pushes a file input source onto the scanner stack.
- *
- * Marks the scanner as non-interactive and begins consuming tokens from the
- * provided file stream without taking ownership of the `FILE`.
  *
  * @param file Pointer to an open file stream to scan.
  *
@@ -876,26 +888,14 @@ void yylex_scan_file(FILE *file) {
   if (file == NULL) {
     return;
   }
-  xd_sh_is_interactive = 0;
   xd_input_stack_push_file(file);
 }  // yylex_scan_file()
 
 /**
- * @brief Pushes `stdin` onto the scanner stack in interactive mode.
+ * @brief Pushes `stdin` onto the scanner stack.
  *
  * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
  */
-void yylex_scan_stdin_interactive() {
-  xd_sh_is_interactive = 1;
-  xd_input_stack_push_file(stdin);
-}  // yylex_scan_stdin_interactive()
-
-/**
- * @brief Pushes `stdin` onto the scanner stack in non-interactive mode.
- *
- * @warning This function calls `exit(EXIT_FAILURE)` on allocation failure.
- */
-void yylex_scan_stdin_noninteractive() {
-  xd_sh_is_interactive = 0;
-  xd_input_stack_push_file(stdin);
-}  // yylex_scan_stdin_noninteractive()
+void yylex_scan_stdin() {
+  xd_input_stack_push_stdin();
+}  // yylex_scan_stdin()
