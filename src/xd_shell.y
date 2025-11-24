@@ -19,6 +19,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "xd_arg_expander.h"
 #include "xd_command.h"
@@ -135,11 +136,13 @@ job:
       xd_jobs_sigchld_unblock();
 
       xd_current_job = xd_job_create();
+      usleep(1000);
     }
   | NEWLINE {
       xd_jobs_sigchld_block();
       xd_jobs_refresh();
       xd_jobs_sigchld_unblock();
+      usleep(1000);
     }
   | error NEWLINE {
       xd_jobs_sigchld_block();
@@ -155,6 +158,7 @@ job:
       xd_sh_last_exit_code = 2;
       yyerrok;
       yyclearin;
+      usleep(1000);
     }
   | error LEX_INTR {
       xd_jobs_sigchld_block();
@@ -170,6 +174,7 @@ job:
       xd_sh_last_exit_code = XD_SH_EXIT_CODE_SIGINTR;
       yyerrok;
       yyclearin;
+      usleep(1000);
     }
   ;
 
