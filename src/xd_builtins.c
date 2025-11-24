@@ -346,8 +346,12 @@ static int xd_kill(int argc, char **argv) {
 
   // parse pids and jobspecs
 
+  xd_job_t *killed_jobs[operand_count];
+
   int success_count = 0;
   for (int i = 0; i < operand_count; i++) {
+    killed_jobs[i] = NULL;
+
     const char *operand = argv[idx++];
     xd_job_t *job = NULL;
     pid_t pid = -1;
@@ -381,19 +385,28 @@ static int xd_kill(int argc, char **argv) {
 
       pid = (int)temp_pid;
     }
+    killed_jobs[i] = job;
 
     // kill to jobspec in non-interactive mode, kill each pid separately
     if (job != NULL && !xd_sh_is_interactive) {
-      if (xd_jobs_kill(job, signum) == -1) {
-        continue;
+      if (xd_jobs_kill(job, signum) != -1) {
+        success_count++;
       }
-      success_count++;
+      continue;
     }
-    else if (kill(pid, signum) == -1) {
+    if (kill(pid, signum) == -1) {
       fprintf(stderr, "xd-shell: kill: (%s) - %s\n", operand, strerror(errno));
       continue;
     }
     success_count++;
+  }
+
+  for (int i = 0; i < operand_count; i++) {
+    xd_job_t *job = killed_jobs[i];
+    if (job == NULL) {
+      continue;
+    }
+    xd_jobs_wait_non_blocking(job);
   }
 
   return success_count == operand_count ? EXIT_SUCCESS : EXIT_FAILURE;
