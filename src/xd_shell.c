@@ -323,7 +323,7 @@ static void xd_sh_init(int argc, char **argv) {
     else {
       snprintf(path, PATH_MAX, "%s", histfile);
     }
-    xd_vars_put("HISTFILE", path, 0);
+    xd_vars_put("HISTFILE", path, 1);
     xd_readline_history_load_from_file(path);
 
     // setup tab-completion function
