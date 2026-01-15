@@ -835,8 +835,10 @@ static xd_list_t *xd_word_splitting(char *arg, char *orig_mask,
       arg[end_idx] = '\0';
       orig_mask[end_idx] = '\0';
 
-      xd_list_add_last(arg_list, arg + start_idx);
-      xd_list_add_last(mask_list, orig_mask + start_idx);
+      if (strchr(XD_IFS, arg[start_idx]) == NULL) {
+        xd_list_add_last(arg_list, arg + start_idx);
+        xd_list_add_last(mask_list, orig_mask + start_idx);
+      }
 
       // restore
       arg[end_idx] = saved_char1;
@@ -855,7 +857,7 @@ static xd_list_t *xd_word_splitting(char *arg, char *orig_mask,
     }
   }
 
-  if (start_idx != end_idx) {
+  if (start_idx != end_idx && strchr(XD_IFS, arg[start_idx]) == NULL) {
     xd_list_add_last(arg_list, arg + start_idx);
     xd_list_add_last(mask_list, orig_mask + start_idx);
   }
